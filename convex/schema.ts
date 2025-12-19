@@ -2423,6 +2423,7 @@ export default defineSchema({
         motion: v.string(), // "fade_up" | "push_in" | "cut" | "typewriter"
         fontSize: v.optional(v.number()), // Override default sizing
         position: v.optional(v.string()), // "center" | "lower_third" | "upper"
+        purpose: v.optional(v.string()), // "hook" | "title" | "tagline" | etc.
       })
     ),
 
