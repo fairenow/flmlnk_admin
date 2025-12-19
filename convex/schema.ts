@@ -264,6 +264,7 @@ export default defineSchema({
     sessionId: v.string(),
     userAgent: v.optional(v.string()),
     referrer: v.optional(v.string()),
+    metadata: v.optional(v.any()),
   }).index("by_actorProfile", ["actorProfileId"])
     .index("by_project", ["projectId"])
     .index("by_clip", ["clipId"]),
