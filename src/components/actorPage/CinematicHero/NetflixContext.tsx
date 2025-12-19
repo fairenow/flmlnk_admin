@@ -61,6 +61,8 @@ type NetflixContextValue = {
   isAuthenticated: boolean;
   userName: string;
   userEmail: string;
+  actorProfileId?: string;
+  slug?: string;
 };
 
 const NetflixContext = createContext<NetflixContextValue | null>(null);
@@ -95,6 +97,8 @@ type NetflixProviderProps = {
   onShowEmailModal: (show: boolean) => void;
   watchCtaLabel?: string;
   watchCtaUrl?: string;
+  actorProfileId?: string;
+  slug?: string;
 };
 
 export const NetflixProvider: FC<NetflixProviderProps> = ({
@@ -119,6 +123,8 @@ export const NetflixProvider: FC<NetflixProviderProps> = ({
   onShowEmailModal,
   watchCtaLabel,
   watchCtaUrl,
+  actorProfileId,
+  slug,
 }) => {
   const [data, setData] = useState<NetflixData>({
     hero: {
@@ -181,6 +187,8 @@ export const NetflixProvider: FC<NetflixProviderProps> = ({
     isAuthenticated,
     userName,
     userEmail,
+    actorProfileId,
+    slug,
   };
 
   return (

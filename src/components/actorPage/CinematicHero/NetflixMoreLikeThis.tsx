@@ -2,7 +2,11 @@
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Play, Share2, Check, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useMutation } from 'convex/react';
+import { api } from '@convex/_generated/api';
+import { Id } from '@convex/_generated/dataModel';
 import { useNetflix } from './NetflixContext';
+import { getSessionId, getUserAgent, getReferrer } from '@/lib/analytics';
 
 type Clip = {
   id: string;
@@ -21,7 +25,8 @@ declare global {
 }
 
 const NetflixMoreLikeThis: React.FC = () => {
-  const { data } = useNetflix();
+  const { data, actorProfileId } = useNetflix();
+  const logEvent = useMutation(api.analytics.logEvent);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [activeClipId, setActiveClipId] = useState<string | null>(null);
@@ -94,6 +99,19 @@ const NetflixMoreLikeThis: React.FC = () => {
         event: 'clip_played',
         film_title: data.hero.title,
         clip_id: clipId,
+      });
+    }
+
+    // Track clip play in Convex analytics
+    if (actorProfileId) {
+      logEvent({
+        actorProfileId: actorProfileId as Id<"actor_profiles">,
+        eventType: 'clip_played',
+        sessionId: getSessionId(),
+        userAgent: getUserAgent(),
+        referrer: getReferrer(),
+      }).catch((err) => {
+        console.error('Failed to log clip play event:', err);
       });
     }
   };

@@ -63,6 +63,7 @@ type HeroProps = {
   onConnectClick?: () => void;
   isAuthenticated?: boolean;
   onShowEmailModal?: (show: boolean) => void;
+  actorProfileId?: string;
 };
 
 // Wrapper interface for unified player controls
@@ -92,6 +93,7 @@ export const Hero: FC<HeroProps> = ({
   onConnectClick,
   isAuthenticated = false,
   onShowEmailModal,
+  actorProfileId,
 }) => {
   const primaryColor = theme.primaryColor ?? "#FF1744";
   const hasWatchCta = watchCtaUrl && watchCtaUrl !== "#";
@@ -690,6 +692,7 @@ export const Hero: FC<HeroProps> = ({
                 socials={socials}
                 iconSize="md"
                 className="justify-start"
+                actorProfileId={actorProfileId}
               />
             )}
 
