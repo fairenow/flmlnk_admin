@@ -13,7 +13,6 @@ import {
   Users,
   Eye,
   Play,
-  Share2,
   Mail,
   MessageSquare,
   MapPin,

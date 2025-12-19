@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { Toaster } from "sonner";
 

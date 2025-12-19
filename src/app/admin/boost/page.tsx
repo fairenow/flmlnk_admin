@@ -8,7 +8,6 @@ import {
   Zap,
   DollarSign,
   Eye,
-  MousePointerClick,
   Users,
   Clock,
   ChevronLeft,
@@ -20,7 +19,6 @@ import {
   XCircle,
   AlertCircle,
   Loader2,
-  TrendingUp,
   Calendar,
   BarChart3,
 } from "lucide-react";
