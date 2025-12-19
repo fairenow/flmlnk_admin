@@ -780,3 +780,340 @@ export const getAggregatedMetrics = query({
     };
   },
 });
+
+// =============================================================================
+// ADMIN QUERIES - Deep Analytics
+// =============================================================================
+
+/**
+ * Get analytics overview for all users (admin view)
+ * Supports filters for location, trailer status, and film count
+ */
+export const getDeepAnalyticsAdmin = query({
+  args: {
+    daysBack: v.optional(v.number()),
+    // Location filters
+    city: v.optional(v.string()),
+    state: v.optional(v.string()),
+    country: v.optional(v.string()),
+    // Content filters
+    hasTrailer: v.optional(v.boolean()),
+    filmCount: v.optional(v.union(v.literal("one"), v.literal("multiple"))),
+  },
+  async handler(ctx, args) {
+    const daysBack = args.daysBack ?? 30;
+    const cutoffTime = Date.now() - daysBack * 24 * 60 * 60 * 1000;
+
+    // Get all actor profiles
+    let profiles = await ctx.db.query("actor_profiles").collect();
+
+    // Apply location filter if provided
+    if (args.city || args.state || args.country) {
+      profiles = profiles.filter((profile) => {
+        const location = profile.location?.toLowerCase() || "";
+        if (args.city && !location.includes(args.city.toLowerCase())) return false;
+        if (args.state && !location.includes(args.state.toLowerCase())) return false;
+        if (args.country && !location.includes(args.country.toLowerCase())) return false;
+        return true;
+      });
+    }
+
+    // Apply trailer filter
+    if (args.hasTrailer !== undefined) {
+      const profilesWithTrailerInfo = await Promise.all(
+        profiles.map(async (profile) => {
+          const projects = await ctx.db
+            .query("projects")
+            .withIndex("by_actorProfile", (q) => q.eq("actorProfileId", profile._id))
+            .collect();
+          const hasTrailer = projects.some((p) => p.trailerUrl);
+          return { profile, hasTrailer };
+        })
+      );
+      profiles = profilesWithTrailerInfo
+        .filter((p) => p.hasTrailer === args.hasTrailer)
+        .map((p) => p.profile);
+    }
+
+    // Apply film count filter
+    if (args.filmCount) {
+      const profilesWithFilmCount = await Promise.all(
+        profiles.map(async (profile) => {
+          const projects = await ctx.db
+            .query("projects")
+            .withIndex("by_actorProfile", (q) => q.eq("actorProfileId", profile._id))
+            .collect();
+          return { profile, filmCount: projects.length };
+        })
+      );
+      profiles = profilesWithFilmCount
+        .filter((p) =>
+          args.filmCount === "one" ? p.filmCount === 1 : p.filmCount > 1
+        )
+        .map((p) => p.profile);
+    }
+
+    // Aggregate analytics for filtered profiles
+    const profileIds = new Set(profiles.map((p) => p._id.toString()));
+
+    // Get events for all filtered profiles
+    const allEvents = await ctx.db.query("analytics_events").collect();
+    const filteredEvents = allEvents.filter(
+      (e) =>
+        e.actorProfileId &&
+        profileIds.has(e.actorProfileId.toString()) &&
+        e._creationTime >= cutoffTime
+    );
+
+    // Aggregate by event type
+    const counts: Record<string, number> = {};
+    const sessionsByProfile = new Map<string, Set<string>>();
+
+    for (const event of filteredEvents) {
+      counts[event.eventType] = (counts[event.eventType] ?? 0) + 1;
+      if (event.actorProfileId) {
+        const profileKey = event.actorProfileId.toString();
+        if (!sessionsByProfile.has(profileKey)) {
+          sessionsByProfile.set(profileKey, new Set());
+        }
+        if (event.sessionId) {
+          sessionsByProfile.get(profileKey)!.add(event.sessionId);
+        }
+      }
+    }
+
+    // Calculate unique sessions across all profiles
+    const allSessions = new Set<string>();
+    for (const sessions of sessionsByProfile.values()) {
+      for (const session of sessions) {
+        allSessions.add(session);
+      }
+    }
+
+    // Get users info for matched profiles
+    const userDetails = await Promise.all(
+      profiles.map(async (profile) => {
+        const user = await ctx.db.get(profile.userId);
+        const projects = await ctx.db
+          .query("projects")
+          .withIndex("by_actorProfile", (q) => q.eq("actorProfileId", profile._id))
+          .collect();
+        const hasTrailer = projects.some((p) => p.trailerUrl);
+        const profileSessions = sessionsByProfile.get(profile._id.toString());
+
+        return {
+          profileId: profile._id,
+          displayName: profile.displayName,
+          slug: profile.slug,
+          location: profile.location,
+          userName: user?.name || user?.email,
+          userEmail: user?.email,
+          filmCount: projects.length,
+          hasTrailer,
+          uniqueVisitors: profileSessions?.size ?? 0,
+        };
+      })
+    );
+
+    return {
+      period: `${daysBack} days`,
+      totalProfiles: profiles.length,
+      totalEvents: filteredEvents.length,
+      uniqueSessions: allSessions.size,
+      // Event breakdowns
+      pageViews: counts["page_view"] ?? 0,
+      clipPlays: counts["clip_played"] ?? 0,
+      clipShares: counts["clip_shared"] ?? 0,
+      emailCaptures: counts["email_captured"] ?? 0,
+      inquiries: counts["inquiry_submitted"] ?? 0,
+      comments: counts["comment_submitted"] ?? 0,
+      signups: counts["user_signup"] ?? 0,
+      profilesCreated: counts["profile_created"] ?? 0,
+      onboardingCompleted: counts["onboarding_completed"] ?? 0,
+      // User breakdown
+      users: userDetails,
+    };
+  },
+});
+
+/**
+ * Search users and films with auto-suggest (admin view)
+ * Returns max 3 results for each category
+ */
+export const searchUsersAndFilmsAdmin = query({
+  args: {
+    query: v.string(),
+  },
+  async handler(ctx, args) {
+    const searchQuery = args.query.toLowerCase().trim();
+    if (!searchQuery || searchQuery.length < 2) {
+      return { users: [], films: [] };
+    }
+
+    // Search users (by name, email, display name)
+    const users = await ctx.db.query("users").collect();
+    const matchedUsers = users
+      .filter((user) => {
+        const name = (user.name || "").toLowerCase();
+        const email = (user.email || "").toLowerCase();
+        const displayName = (user.displayName || "").toLowerCase();
+        return (
+          name.includes(searchQuery) ||
+          email.includes(searchQuery) ||
+          displayName.includes(searchQuery)
+        );
+      })
+      .slice(0, 3)
+      .map((user) => ({
+        _id: user._id,
+        name: user.name || user.email,
+        email: user.email,
+        type: "user" as const,
+      }));
+
+    // Search films (by project title)
+    const projects = await ctx.db.query("projects").collect();
+    const matchedFilms = projects
+      .filter((project) => {
+        const title = (project.title || "").toLowerCase();
+        const logline = (project.logline || "").toLowerCase();
+        return title.includes(searchQuery) || logline.includes(searchQuery);
+      })
+      .slice(0, 3);
+
+    // Enrich films with profile info
+    const enrichedFilms = await Promise.all(
+      matchedFilms.map(async (project) => {
+        const profile = await ctx.db.get(project.actorProfileId);
+        return {
+          _id: project._id,
+          title: project.title,
+          profileName: profile?.displayName,
+          profileSlug: profile?.slug,
+          posterUrl: project.posterUrl,
+          type: "film" as const,
+        };
+      })
+    );
+
+    // Also search actor profiles
+    const profiles = await ctx.db.query("actor_profiles").collect();
+    const matchedProfiles = profiles
+      .filter((profile) => {
+        const displayName = (profile.displayName || "").toLowerCase();
+        const slug = (profile.slug || "").toLowerCase();
+        return displayName.includes(searchQuery) || slug.includes(searchQuery);
+      })
+      .slice(0, 3);
+
+    const enrichedProfiles = await Promise.all(
+      matchedProfiles.map(async (profile) => {
+        const user = await ctx.db.get(profile.userId);
+        return {
+          _id: profile._id,
+          displayName: profile.displayName,
+          slug: profile.slug,
+          userName: user?.name || user?.email,
+          type: "profile" as const,
+        };
+      })
+    );
+
+    return {
+      users: matchedUsers,
+      films: enrichedFilms,
+      profiles: enrichedProfiles,
+    };
+  },
+});
+
+/**
+ * Get analytics for a specific user/profile (admin detail view)
+ */
+export const getProfileAnalyticsAdmin = query({
+  args: {
+    profileId: v.id("actor_profiles"),
+    daysBack: v.optional(v.number()),
+  },
+  async handler(ctx, args) {
+    const daysBack = args.daysBack ?? 30;
+    const cutoffTime = Date.now() - daysBack * 24 * 60 * 60 * 1000;
+
+    const profile = await ctx.db.get(args.profileId);
+    if (!profile) {
+      return null;
+    }
+
+    const user = await ctx.db.get(profile.userId);
+
+    // Get projects
+    const projects = await ctx.db
+      .query("projects")
+      .withIndex("by_actorProfile", (q) => q.eq("actorProfileId", args.profileId))
+      .collect();
+
+    // Get events
+    const allEvents = await ctx.db
+      .query("analytics_events")
+      .withIndex("by_actorProfile", (q) => q.eq("actorProfileId", args.profileId))
+      .collect();
+
+    const recentEvents = allEvents.filter((e) => e._creationTime >= cutoffTime);
+
+    // Aggregate
+    const counts: Record<string, number> = {};
+    const sessions = new Set<string>();
+
+    for (const event of recentEvents) {
+      counts[event.eventType] = (counts[event.eventType] ?? 0) + 1;
+      if (event.sessionId) {
+        sessions.add(event.sessionId);
+      }
+    }
+
+    // Get snapshots for trend data
+    const startDate = new Date(cutoffTime).toISOString().split("T")[0];
+    const endDate = new Date().toISOString().split("T")[0];
+
+    const snapshots = await ctx.db
+      .query("analytics_snapshots")
+      .withIndex("by_profile", (q) => q.eq("actorProfileId", args.profileId))
+      .collect();
+
+    const filteredSnapshots = snapshots
+      .filter((s) => s.date >= startDate && s.date <= endDate)
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    return {
+      profile: {
+        _id: profile._id,
+        displayName: profile.displayName,
+        slug: profile.slug,
+        location: profile.location,
+      },
+      user: {
+        _id: user?._id,
+        name: user?.name,
+        email: user?.email,
+      },
+      projects: projects.map((p) => ({
+        _id: p._id,
+        title: p.title,
+        hasTrailer: !!p.trailerUrl,
+        posterUrl: p.posterUrl,
+      })),
+      metrics: {
+        period: `${daysBack} days`,
+        totalEvents: recentEvents.length,
+        uniqueSessions: sessions.size,
+        pageViews: counts["page_view"] ?? 0,
+        clipPlays: counts["clip_played"] ?? 0,
+        clipShares: counts["clip_shared"] ?? 0,
+        emailCaptures: counts["email_captured"] ?? 0,
+        inquiries: counts["inquiry_submitted"] ?? 0,
+        comments: counts["comment_submitted"] ?? 0,
+      },
+      snapshots: filteredSnapshots,
+    };
+  },
+});

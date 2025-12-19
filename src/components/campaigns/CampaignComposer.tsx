@@ -523,7 +523,16 @@ export function CampaignComposer({
             >
               <option value="creator_subscribers">My Fans ({audienceStats?.active || 0})</option>
               <option value="site_wide">Site-Wide Audience ({siteWideStats?.active || 0})</option>
+              <option value="all_filmmakers">All Filmmakers (Platform Users)</option>
             </select>
+
+            {audienceType === "all_filmmakers" && (
+              <div className="mt-2 p-2 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800">
+                <p className="text-xs text-indigo-700 dark:text-indigo-300">
+                  This will send to all registered filmmakers on the platform who have created a profile.
+                </p>
+              </div>
+            )}
 
             {/* Audience Preview */}
             {fanEmailsPreview && fanEmailsPreview.active > 0 && (
