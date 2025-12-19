@@ -906,8 +906,8 @@ export const createRecipientRecords = internalMutation({
     const now = Date.now();
 
     for (const recipient of recipients) {
-      // Only insert if we have either fanEmailId or it's a user-based recipient
-      if (recipient.fanEmailId || recipient.isUserBased) {
+      // Only insert if we have a valid fanEmailId (user-based recipients are tracked separately)
+      if (recipient.fanEmailId) {
         await ctx.db.insert("campaign_recipients", {
           campaignId,
           fanEmailId: recipient.fanEmailId,
@@ -956,8 +956,8 @@ export const updateRecipientStatus = internalMutation({
       });
     }
 
-    // Update fan_email engagement tracking (only for fan-based recipients)
-    if (status === "sent") {
+    // Update fan_email engagement tracking (only for fan-based recipients with valid fanEmailId)
+    if (status === "sent" && fanEmailId) {
       const fanEmail = await ctx.db.get(fanEmailId);
       if (fanEmail) {
         await ctx.db.patch(fanEmailId, {
