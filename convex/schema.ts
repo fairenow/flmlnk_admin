@@ -462,6 +462,46 @@ export default defineSchema({
       })
     ),
 
+    // CTA metrics
+    ctaMetrics: v.optional(
+      v.object({
+        getUpdatesClicks: v.number(),
+        outboundLinkClicks: v.number(),
+        shareButtonClicks: v.number(),
+        watchCtaClicks: v.number(),
+      })
+    ),
+
+    // Scroll depth metrics
+    scrollDepth: v.optional(
+      v.object({
+        reached25: v.number(),
+        reached50: v.number(),
+        reached75: v.number(),
+        reached100: v.number(),
+      })
+    ),
+
+    // Time on page metrics
+    timeOnPage: v.optional(
+      v.object({
+        reached30s: v.number(),
+        reached60s: v.number(),
+        reached180s: v.number(),
+      })
+    ),
+
+    // Video engagement metrics
+    videoEngagement: v.optional(
+      v.object({
+        totalPlays: v.number(),
+        progress25: v.number(),
+        progress50: v.number(),
+        progress75: v.number(),
+        progress100: v.number(),
+      })
+    ),
+
     // Data source indicator
     source: v.optional(v.string()), // "ga4", "convex", "both"
     createdAt: v.number(),
