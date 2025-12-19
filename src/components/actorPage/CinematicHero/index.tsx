@@ -40,12 +40,13 @@ type CinematicHeroProps = {
   onShare?: () => void;
   isAuthenticated?: boolean;
   onShowEmailModal?: (show: boolean) => void;
+  actorProfileId?: string;
 };
 
 export const CinematicHero: FC<CinematicHeroProps> = ({
   displayName,
   avatarUrl,
-  slug: _slug,
+  slug,
   theme: _theme,
   featuredProject,
   featuredClipUrl,
@@ -53,6 +54,7 @@ export const CinematicHero: FC<CinematicHeroProps> = ({
   onShare: _onShare,
   isAuthenticated = false,
   onShowEmailModal = () => {},
+  actorProfileId,
 }) => {
   // Extract video ID from YouTube URL
   const videoId = featuredClipUrl ? extractYouTubeId(featuredClipUrl) : null;
@@ -97,6 +99,8 @@ export const CinematicHero: FC<CinematicHeroProps> = ({
       onShowEmailModal={onShowEmailModal}
       watchCtaLabel={featuredProject?.primaryWatchLabel}
       watchCtaUrl={featuredProject?.primaryWatchUrl}
+      actorProfileId={actorProfileId}
+      slug={slug}
     >
       <NetflixHero />
     </NetflixProvider>

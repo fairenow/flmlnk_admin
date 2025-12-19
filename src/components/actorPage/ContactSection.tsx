@@ -79,6 +79,7 @@ export const ContactSection: FC<ContactSectionProps> = ({
             socials={socials}
             primaryColor={primaryColor}
             onEmailSignup={onConnectClick}
+            actorProfileId={actorProfileId}
           />
         </div>
       </div>

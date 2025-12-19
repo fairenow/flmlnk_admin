@@ -1,6 +1,11 @@
 "use client";
 
 import type { FC, ReactNode } from "react";
+import { useMutation } from "convex/react";
+import { api } from "@convex/_generated/api";
+import { Id } from "@convex/_generated/dataModel";
+import { getSessionId, getUserAgent, getReferrer } from "@/lib/analytics";
+import { pushGTMEvent } from "@/lib/gtm";
 
 type Socials = {
   instagram?: string;
@@ -15,6 +20,7 @@ type FollowTheJourneyProps = {
   socials: Socials;
   primaryColor?: string;
   onEmailSignup?: () => void;
+  actorProfileId?: string;
 };
 
 const SOCIAL_ICONS: Record<string, { icon: ReactNode; label: string; color: string }> = {
@@ -83,7 +89,10 @@ export const FollowTheJourney: FC<FollowTheJourneyProps> = ({
   socials,
   primaryColor = "#FF1744",
   onEmailSignup,
+  actorProfileId,
 }) => {
+  const logEvent = useMutation(api.analytics.logEvent);
+
   const socialLinks = Object.entries(socials)
     .filter(([, url]) => Boolean(url))
     .map(([key, url]) => ({
@@ -92,6 +101,27 @@ export const FollowTheJourney: FC<FollowTheJourneyProps> = ({
       ...SOCIAL_ICONS[key],
     }))
     .filter((s) => s.icon);
+
+  const handleSocialClick = (platform: string, url: string) => {
+    // Track in GTM
+    pushGTMEvent("social_link_clicked", {
+      platform,
+      url,
+    });
+
+    // Track in Convex analytics
+    if (actorProfileId) {
+      logEvent({
+        actorProfileId: actorProfileId as Id<"actor_profiles">,
+        eventType: "social_link_clicked",
+        sessionId: getSessionId(),
+        userAgent: getUserAgent(),
+        referrer: getReferrer(),
+      }).catch((err) => {
+        console.error("Failed to log social link click:", err);
+      });
+    }
+  };
 
   return (
     <div className="rounded-xl border border-white/10 bg-white/5 p-6">
@@ -111,6 +141,7 @@ export const FollowTheJourney: FC<FollowTheJourneyProps> = ({
             target="_blank"
             rel="noopener noreferrer"
             className="group flex items-center gap-3 rounded-lg border border-white/10 bg-white/5 p-3 transition hover:border-white/20 hover:bg-white/10"
+            onClick={() => handleSocialClick(social.key, social.url)}
           >
             <span
               className="text-slate-400 transition group-hover:text-white"

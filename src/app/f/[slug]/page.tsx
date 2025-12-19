@@ -385,6 +385,7 @@ export default function FilmmakerPublicPage() {
           onShare={handleClipShare}
           isAuthenticated={isAuthenticated}
           onShowEmailModal={setShowEmailModal}
+          actorProfileId={profile._id}
         />
       ) : (
         <Hero
@@ -417,6 +418,7 @@ export default function FilmmakerPublicPage() {
           onConnectClick={handleConnectClick}
           isAuthenticated={isAuthenticated}
           onShowEmailModal={setShowEmailModal}
+          actorProfileId={profile._id}
         />
       )}
 

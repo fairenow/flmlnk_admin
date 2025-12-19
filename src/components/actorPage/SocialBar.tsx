@@ -1,4 +1,9 @@
 import type { FC, CSSProperties } from "react";
+import { useMutation } from "convex/react";
+import { api } from "@convex/_generated/api";
+import { Id } from "@convex/_generated/dataModel";
+import { getSessionId, getUserAgent, getReferrer } from "@/lib/analytics";
+import { pushGTMEvent } from "@/lib/gtm";
 
 type Socials = {
   instagram?: string;
@@ -13,6 +18,7 @@ type SocialBarProps = {
   socials: Socials;
   className?: string;
   iconSize?: "sm" | "md" | "lg";
+  actorProfileId?: string;
 };
 
 const SOCIAL_CONFIG: Record<
@@ -37,10 +43,34 @@ export const SocialBar: FC<SocialBarProps> = ({
   socials,
   className = "",
   iconSize = "md",
+  actorProfileId,
 }) => {
+  const logEvent = useMutation(api.analytics.logEvent);
+
   const activeSocials = Object.entries(socials).filter(
     ([, url]) => url && url.trim(),
   ) as [keyof Socials, string][];
+
+  const handleSocialClick = (platform: keyof Socials, url: string) => {
+    // Track in GTM
+    pushGTMEvent("social_link_clicked", {
+      platform,
+      url,
+    });
+
+    // Track in Convex analytics
+    if (actorProfileId) {
+      logEvent({
+        actorProfileId: actorProfileId as Id<"actor_profiles">,
+        eventType: "social_link_clicked",
+        sessionId: getSessionId(),
+        userAgent: getUserAgent(),
+        referrer: getReferrer(),
+      }).catch((err) => {
+        console.error("Failed to log social link click:", err);
+      });
+    }
+  };
 
   if (activeSocials.length === 0) return null;
 
@@ -57,6 +87,7 @@ export const SocialBar: FC<SocialBarProps> = ({
             title={config.label}
             className={`flex items-center justify-center rounded-full bg-white/10 font-semibold text-white/80 transition-all hover:scale-110 hover:bg-white/20 hover:text-white ${SIZE_CLASSES[iconSize]}`}
             style={{ "--hover-color": config.hoverColor } as CSSProperties}
+            onClick={() => handleSocialClick(key, url)}
           >
             {config.icon}
           </a>

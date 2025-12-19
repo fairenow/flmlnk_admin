@@ -21,7 +21,8 @@ export type EventType =
   | "comment_submitted"
   | "user_signup"
   | "profile_created"
-  | "onboarding_completed";
+  | "onboarding_completed"
+  | "social_link_clicked";
 
 /**
  * Log an analytics event.
@@ -414,6 +415,7 @@ export const aggregateDailySnapshots = internalAction({
         commentCount: counts["comment_submitted"] ?? 0,
         emailCaptures: counts["email_captured"] ?? 0,
         inquiries: counts["inquiry_submitted"] ?? 0,
+        socialClicks: counts["social_link_clicked"] ?? 0,
         source: "convex",
       });
     }
