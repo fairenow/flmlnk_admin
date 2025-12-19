@@ -2185,10 +2185,12 @@ export default defineSchema({
     timestampPlanId: v.optional(v.id("trailer_timestamp_plans")),
     textCardPlanId: v.optional(v.id("trailer_text_card_plans")),
     audioPlanId: v.optional(v.id("trailer_audio_plans")),
+    narrationPlanId: v.optional(v.id("trailer_narration_plans")),
     effectsPlanId: v.optional(v.id("trailer_effects_plans")), // Phase 6: transitions & speed effects
     overlayPlanId: v.optional(v.id("trailer_overlay_plans")), // Phase 7: branding & overlays
     workflowPlanId: v.optional(v.id("trailer_workflow_plans")), // Phase 8: workflow & previews
     aiSelectionPlanId: v.optional(v.id("trailer_ai_selection_plans")), // Phase 9: AI selection
+    filmIdentityId: v.optional(v.id("film_identities")),
 
     // Outputs
     clipIds: v.optional(v.array(v.id("trailer_clips"))),
