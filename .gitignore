@@ -1,0 +1,25 @@
+node_modules
+.next
+.env
+.env.local
+.env.production
+.env.development
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.DS_Store
+.vercel
+convex/.cache
+tsconfig.tsbuildinfo
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+#directories
+/clip-gold-main
