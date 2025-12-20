@@ -2,45 +2,45 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Admin Dark theme (default) - Modern tech company feel */
+/* Admin Dark theme (default) - FLMLNK brand (black/red) */
 :root,
 .dark {
   color-scheme: dark;
-  --theme-bg: #0f1117;
-  --theme-bg-secondary: #1a1d24;
-  --theme-bg-card: #1a1d24;
-  --theme-bg-input: #22262f;
-  --theme-bg-sidebar: linear-gradient(to bottom, #1a1d24, #0f1117, #0a0c10);
+  --theme-bg: #050505;
+  --theme-bg-secondary: #0f0f0f;
+  --theme-bg-card: #0f0f0f;
+  --theme-bg-input: #1a1a1a;
+  --theme-bg-sidebar: linear-gradient(to bottom, #0f0f0f, #050505, #000000);
   --theme-text-primary: #ffffff;
   --theme-text-secondary: #e2e8f0;
   --theme-text-muted: #94a3b8;
-  --theme-border: rgba(99, 102, 241, 0.25);
-  --theme-border-focus: #6366f1;
-  --theme-section-border: rgba(99, 102, 241, 0.3);
-  --theme-card-shadow: rgba(99, 102, 241, 0.15);
-  --admin-primary: #6366f1;
-  --admin-primary-hover: #4f46e5;
-  --admin-accent: #06b6d4;
+  --theme-border: rgba(239, 68, 68, 0.25);
+  --theme-border-focus: #ef4444;
+  --theme-section-border: rgba(239, 68, 68, 0.3);
+  --theme-card-shadow: rgba(239, 68, 68, 0.15);
+  --admin-primary: #ef4444;
+  --admin-primary-hover: #dc2626;
+  --admin-accent: #f43f5e;
 }
 
 /* Admin Light theme */
 .light {
   color-scheme: light;
-  --theme-bg: #f8fafc;
+  --theme-bg: #fafafa;
   --theme-bg-secondary: #ffffff;
   --theme-bg-card: #ffffff;
   --theme-bg-input: #ffffff;
-  --theme-bg-sidebar: linear-gradient(to bottom, #1a1d24, #0f1117, #0a0c10);
+  --theme-bg-sidebar: linear-gradient(to bottom, #0f0f0f, #050505, #000000);
   --theme-text-primary: #0f172a;
   --theme-text-secondary: #334155;
   --theme-text-muted: #64748b;
-  --theme-border: rgba(99, 102, 241, 0.3);
-  --theme-border-focus: #4f46e5;
-  --theme-section-border: rgba(99, 102, 241, 0.35);
-  --theme-card-shadow: rgba(99, 102, 241, 0.12);
-  --admin-primary: #4f46e5;
-  --admin-primary-hover: #4338ca;
-  --admin-accent: #0891b2;
+  --theme-border: rgba(239, 68, 68, 0.3);
+  --theme-border-focus: #dc2626;
+  --theme-section-border: rgba(239, 68, 68, 0.35);
+  --theme-card-shadow: rgba(239, 68, 68, 0.12);
+  --admin-primary: #dc2626;
+  --admin-primary-hover: #b91c1c;
+  --admin-accent: #e11d48;
 }
 
 html {
@@ -60,19 +60,19 @@ body {
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
-/* Admin dark theme body gradient - modern indigo/purple tones */
+/* Admin dark theme body gradient - FLMLNK brand (black/red) */
 .dark body,
 :root body {
-  background: radial-gradient(circle at 20% 20%, rgba(99, 102, 241, 0.08), transparent 35%),
-    radial-gradient(circle at 80% 0%, rgba(6, 182, 212, 0.06), transparent 30%),
-    #0f1117;
+  background: radial-gradient(circle at 20% 20%, rgba(239, 68, 68, 0.06), transparent 35%),
+    radial-gradient(circle at 80% 0%, rgba(244, 63, 94, 0.04), transparent 30%),
+    #050505;
 }
 
-/* Admin light theme body - clean with subtle indigo accent */
+/* Admin light theme body - clean with subtle red accent */
 .light body {
-  background: radial-gradient(circle at 20% 20%, rgba(99, 102, 241, 0.04), transparent 40%),
-    radial-gradient(circle at 80% 0%, rgba(6, 182, 212, 0.03), transparent 35%),
-    #f8fafc;
+  background: radial-gradient(circle at 20% 20%, rgba(239, 68, 68, 0.03), transparent 40%),
+    radial-gradient(circle at 80% 0%, rgba(244, 63, 94, 0.02), transparent 35%),
+    #fafafa;
 }
 
 iframe[src*="player.vimeo.com"],
