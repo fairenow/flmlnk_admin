@@ -625,3 +625,188 @@ export const getBoostMetricsByAsset = query({
     return results.sort((a, b) => b.lastCampaignDate - a.lastCampaignDate);
   },
 });
+
+// =============================================================================
+// ADMIN QUERIES
+// =============================================================================
+
+/**
+ * Get all boost campaigns across all users (admin view)
+ * Returns enriched data with user info, film name, and asset details
+ */
+export const getAllBoostCampaignsAdmin = query({
+  args: {
+    status: v.optional(v.string()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    // Get all campaigns
+    let campaigns;
+    if (args.status) {
+      campaigns = await ctx.db
+        .query("boost_campaigns")
+        .withIndex("by_status", (q) => q.eq("status", args.status!))
+        .order("desc")
+        .take(args.limit ?? 100);
+    } else {
+      campaigns = await ctx.db
+        .query("boost_campaigns")
+        .order("desc")
+        .take(args.limit ?? 100);
+    }
+
+    const r2Bucket = process.env.R2_PUBLIC_BUCKET_URL;
+
+    // Enrich with user, profile, project, and asset details
+    const enrichedCampaigns = await Promise.all(
+      campaigns.map(async (campaign) => {
+        // Get user info
+        const user = await ctx.db.get(campaign.createdByUserId);
+
+        // Get actor profile
+        const profile = campaign.actorProfileId
+          ? await ctx.db.get(campaign.actorProfileId)
+          : null;
+
+        // Get project info (for film name)
+        const project = campaign.projectId
+          ? await ctx.db.get(campaign.projectId)
+          : null;
+
+        // Get asset thumbnail and title
+        let assetThumbnail: string | null = null;
+        let assetTitle = campaign.name;
+
+        if (campaign.assetId && campaign.assetType) {
+          if (campaign.assetType === "clip") {
+            const clip = await ctx.db.get(campaign.assetId as Id<"generated_clips">);
+            if (clip) {
+              assetThumbnail = clip.customThumbnailUrl || clip.thumbnailUrl || null;
+              assetTitle = clip.title || campaign.name;
+            }
+          } else if (campaign.assetType === "meme") {
+            const meme = await ctx.db.get(campaign.assetId as Id<"generated_memes">);
+            if (meme) {
+              if (meme.memeStorageId) {
+                assetThumbnail = await ctx.storage.getUrl(meme.memeStorageId);
+              } else if (r2Bucket && meme.r2MemeKey) {
+                assetThumbnail = `${r2Bucket}/${meme.r2MemeKey}`;
+              } else if (r2Bucket && meme.r2FrameKey) {
+                assetThumbnail = `${r2Bucket}/${meme.r2FrameKey}`;
+              } else {
+                assetThumbnail = meme.memeUrl || meme.frameUrl || null;
+              }
+              assetTitle = meme.caption?.slice(0, 50) || campaign.name;
+            }
+          } else if (campaign.assetType === "gif") {
+            const gif = await ctx.db.get(campaign.assetId as Id<"generated_gifs">);
+            if (gif) {
+              if (gif.storageId) {
+                assetThumbnail = await ctx.storage.getUrl(gif.storageId);
+              } else if (r2Bucket && gif.r2GifKey) {
+                assetThumbnail = `${r2Bucket}/${gif.r2GifKey}`;
+              } else {
+                assetThumbnail = gif.gifUrl || null;
+              }
+              assetTitle = gif.title || campaign.name;
+            }
+          }
+        }
+
+        const now = Date.now();
+        const daysRemaining = campaign.endDate
+          ? Math.max(0, Math.ceil((campaign.endDate - now) / (24 * 60 * 60 * 1000)))
+          : null;
+        const daysElapsed = campaign.startDate
+          ? Math.ceil((now - campaign.startDate) / (24 * 60 * 60 * 1000))
+          : 0;
+
+        return {
+          _id: campaign._id,
+          // Campaign details
+          name: assetTitle,
+          status: campaign.status,
+          paymentStatus: campaign.paymentStatus,
+          platform: campaign.platform,
+          // Budget info
+          budgetCents: campaign.budgetCents,
+          dailyBudgetCents: campaign.dailyBudgetCents,
+          spentCents: campaign.spentCents ?? 0,
+          durationDays: campaign.durationDays,
+          // Duration info
+          daysRemaining,
+          daysElapsed,
+          startDate: campaign.startDate,
+          endDate: campaign.endDate,
+          // Performance metrics
+          impressions: campaign.impressions ?? 0,
+          clicks: campaign.clicks ?? 0,
+          reach: campaign.reach ?? 0,
+          conversions: campaign.conversions ?? 0,
+          ctr: campaign.ctr,
+          cpc: campaign.cpc,
+          cpm: campaign.cpm,
+          roi: campaign.roi,
+          // Asset info
+          assetType: campaign.assetType,
+          assetId: campaign.assetId,
+          assetThumbnail,
+          // User/Account info
+          userName: user?.name || user?.email || "Unknown User",
+          userEmail: user?.email,
+          userId: campaign.createdByUserId,
+          // Profile info
+          profileName: profile?.displayName,
+          profileSlug: profile?.slug,
+          profileId: campaign.actorProfileId,
+          // Film/Project info
+          filmName: project?.title || profile?.displayName || "No Film",
+          projectId: campaign.projectId,
+          // Dates
+          createdAt: campaign.createdAt,
+          paidAt: campaign.paidAt,
+        };
+      })
+    );
+
+    return enrichedCampaigns;
+  },
+});
+
+/**
+ * Get boost campaign summary stats (admin view)
+ */
+export const getBoostSummaryAdmin = query({
+  args: {},
+  handler: async (ctx) => {
+    const campaigns = await ctx.db.query("boost_campaigns").collect();
+
+    const totalCampaigns = campaigns.length;
+    const activeCampaigns = campaigns.filter((c) => c.status === "active").length;
+    const completedCampaigns = campaigns.filter((c) => c.status === "completed").length;
+    const pendingPayment = campaigns.filter((c) => c.status === "pending_payment").length;
+
+    const totalSpent = campaigns.reduce((sum, c) => sum + (c.spentCents ?? 0), 0);
+    const totalBudget = campaigns.reduce((sum, c) => sum + (c.budgetCents ?? 0), 0);
+    const totalImpressions = campaigns.reduce((sum, c) => sum + (c.impressions ?? 0), 0);
+    const totalClicks = campaigns.reduce((sum, c) => sum + (c.clicks ?? 0), 0);
+    const totalReach = campaigns.reduce((sum, c) => sum + (c.reach ?? 0), 0);
+
+    // Get unique users who have boosted
+    const uniqueUsers = new Set(campaigns.map((c) => c.createdByUserId.toString())).size;
+
+    return {
+      totalCampaigns,
+      activeCampaigns,
+      completedCampaigns,
+      pendingPayment,
+      totalSpentCents: totalSpent,
+      totalBudgetCents: totalBudget,
+      totalImpressions,
+      totalClicks,
+      totalReach,
+      uniqueUsers,
+      avgCtr: totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0,
+    };
+  },
+});
