@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import React, { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "@/lib/auth-client";
 import { Shield, Loader2, ArrowRight, LayoutDashboard, Users, BarChart3, Settings } from "lucide-react";
