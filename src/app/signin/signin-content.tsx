@@ -1,14 +1,34 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useConvex } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { signIn, useSession } from "@/lib/auth-client";
-import { Shield, Mail, ArrowRight, Loader2 } from "lucide-react";
+import { Shield, Loader2 } from "lucide-react";
+import { SIGN_IN_PATH } from "@/lib/routes";
 
-// Superadmin email - the only allowed user for this admin dashboard
-const SUPERADMIN_EMAIL = "flmlnk2025@gmail.com";
+const GoogleIcon = () => (
+  <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
+    <path
+      fill="#EA4335"
+      d="M12 10.2v3.6h5.1c-.2 1.2-.8 2.1-1.6 2.8l2.6 2c1.5-1.4 2.4-3.5 2.4-6 0-.6-.1-1.2-.2-1.8H12z"
+    />
+    <path
+      fill="#34A853"
+      d="M5.3 14.3l-.8.6-2 1.6C4 20 7.7 22 12 22c2.4 0 4.4-.8 5.9-2.4l-2.6-2c-.7.5-1.6.8-2.7.8-2.1 0-3.9-1.4-4.6-3.4z"
+    />
+    <path
+      fill="#4A90E2"
+      d="M3 7.5C2.4 8.7 2 10.1 2 11.5s.4 2.8 1 4l3.2-2.5c-.2-.5-.3-1-.3-1.5s.1-1 .3-1.5z"
+    />
+    <path
+      fill="#FBBC05"
+      d="M12 4.8c1.3 0 2.5.4 3.4 1.3l2.5-2.4C16.4 2.4 14.4 1.5 12 1.5 7.7 1.5 4 3.5 2.5 7l3.2 2.5C6.1 6.2 8 4.8 12 4.8z"
+    />
+    <path fill="none" d="M2 2h20v20H2z" />
+  </svg>
+);
 
 export function SignInContent() {
   const router = useRouter();
@@ -16,13 +36,14 @@ export function SignInContent() {
   const convex = useConvex();
   const { data: sessionData } = useSession();
   const isAuthenticated = Boolean(sessionData?.session);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [step, setStep] = useState<"email" | "password">("email");
-  const [isPending, startTransition] = useTransition();
+  const [isGooglePending, setIsGooglePending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const next = useMemo(() => searchParams?.get("next") ?? null, [searchParams]);
+  const redirectQuery = useMemo(() => {
+    const params = searchParams?.toString();
+    return params ? `?${params}` : "";
+  }, [searchParams]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -42,38 +63,20 @@ export function SignInContent() {
     void redirectAfterSignIn();
   }, [convex, isAuthenticated, next, router]);
 
-  const handleEmailCheck = (event: FormEvent) => {
-    event.preventDefault();
+  const handleGoogleSignIn = async () => {
     setError(null);
-
-    if (email.toLowerCase() !== SUPERADMIN_EMAIL.toLowerCase()) {
-      setError("Access denied. This admin dashboard is restricted to authorized personnel only.");
-      return;
+    setIsGooglePending(true);
+    try {
+      await signIn.social({
+        provider: "google",
+        redirectTo: `${SIGN_IN_PATH}${redirectQuery}`,
+      });
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Unable to sign in with Google.";
+      setError(message);
+      setIsGooglePending(false);
     }
-
-    setStep("password");
-  };
-
-  const handleSignIn = async (event: FormEvent) => {
-    event.preventDefault();
-    setError(null);
-
-    startTransition(async () => {
-      try {
-        const result = await signIn.email({
-          email,
-          password,
-        });
-
-        if (result.error) {
-          setError(result.error.message ?? "Unable to sign in.");
-        }
-      } catch (err) {
-        const message =
-          err instanceof Error ? err.message : "Unable to sign in.";
-        setError(message);
-      }
-    });
   };
 
   return (
@@ -81,7 +84,7 @@ export function SignInContent() {
       {/* Background gradient effects */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-0 left-1/4 w-96 h-96 bg-admin-primary-500/10 rounded-full blur-3xl" />
-        <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-admin-accent-500/10 rounded-full blur-3xl" />
+        <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-admin-accent-500/8 rounded-full blur-3xl" />
       </div>
 
       <div className="relative w-full max-w-md">
@@ -105,102 +108,36 @@ export function SignInContent() {
             </p>
           </div>
 
-          {step === "email" ? (
-            <form onSubmit={handleEmailCheck} className="space-y-4">
-              <div>
-                <label htmlFor="email" className="block text-sm font-medium text-slate-300 mb-2">
-                  Admin Email
-                </label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
-                  <input
-                    id="email"
-                    type="email"
-                    placeholder="Enter your admin email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full pl-11 pr-4 py-3 bg-admin-surface border border-white/10 rounded-lg text-white placeholder:text-slate-500 focus:border-admin-primary-500 focus:ring-2 focus:ring-admin-primary-500/20 focus:outline-none transition-all"
-                    required
-                    autoFocus
-                  />
-                </div>
+          <div className="space-y-4">
+            {error && (
+              <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+                <p className="text-sm text-red-400">{error}</p>
               </div>
+            )}
 
-              {error && (
-                <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
-                  <p className="text-sm text-red-400">{error}</p>
-                </div>
+            <button
+              type="button"
+              onClick={handleGoogleSignIn}
+              disabled={isGooglePending}
+              className="w-full flex items-center justify-center gap-3 py-3 px-4 bg-white hover:bg-gray-50 text-gray-900 font-medium rounded-lg transition-all shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {isGooglePending ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  Connecting to Google...
+                </>
+              ) : (
+                <>
+                  <GoogleIcon />
+                  Continue with Google
+                </>
               )}
+            </button>
 
-              <button
-                type="submit"
-                className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-gradient-to-r from-admin-primary-600 to-admin-primary-500 hover:from-admin-primary-500 hover:to-admin-primary-400 text-white font-medium rounded-lg transition-all shadow-lg shadow-admin-primary-500/25"
-              >
-                Continue
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </form>
-          ) : (
-            <form onSubmit={handleSignIn} className="space-y-4">
-              <div className="p-3 bg-admin-primary-500/10 border border-admin-primary-500/30 rounded-lg mb-4">
-                <p className="text-sm text-admin-primary-300">
-                  Signing in as <span className="font-medium">{email}</span>
-                </p>
-              </div>
-
-              <div>
-                <label htmlFor="password" className="block text-sm font-medium text-slate-300 mb-2">
-                  Password
-                </label>
-                <input
-                  id="password"
-                  type="password"
-                  placeholder="Enter your password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-4 py-3 bg-admin-surface border border-white/10 rounded-lg text-white placeholder:text-slate-500 focus:border-admin-primary-500 focus:ring-2 focus:ring-admin-primary-500/20 focus:outline-none transition-all"
-                  required
-                  autoFocus
-                />
-              </div>
-
-              {error && (
-                <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
-                  <p className="text-sm text-red-400">{error}</p>
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={isPending}
-                className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-gradient-to-r from-admin-primary-600 to-admin-primary-500 hover:from-admin-primary-500 hover:to-admin-primary-400 text-white font-medium rounded-lg transition-all shadow-lg shadow-admin-primary-500/25 disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {isPending ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Signing in...
-                  </>
-                ) : (
-                  <>
-                    Sign In
-                    <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setStep("email");
-                  setError(null);
-                  setPassword("");
-                }}
-                className="w-full py-2 text-sm text-slate-400 hover:text-slate-300 transition-colors"
-              >
-                Use a different email
-              </button>
-            </form>
-          )}
+            <p className="text-center text-xs text-slate-500 mt-4">
+              Access restricted to authorized FLMLNK team members
+            </p>
+          </div>
         </div>
 
         {/* Footer */}
