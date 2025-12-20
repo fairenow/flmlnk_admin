@@ -1,34 +1,11 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useConvex } from "convex/react";
 import { api } from "@convex/_generated/api";
-import { signIn, useSession } from "@/lib/auth-client";
-import { Shield, Loader2 } from "lucide-react";
-import { SIGN_IN_PATH } from "@/lib/routes";
-
-const GoogleIcon = () => (
-  <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
-    <path
-      fill="#EA4335"
-      d="M12 10.2v3.6h5.1c-.2 1.2-.8 2.1-1.6 2.8l2.6 2c1.5-1.4 2.4-3.5 2.4-6 0-.6-.1-1.2-.2-1.8H12z"
-    />
-    <path
-      fill="#34A853"
-      d="M5.3 14.3l-.8.6-2 1.6C4 20 7.7 22 12 22c2.4 0 4.4-.8 5.9-2.4l-2.6-2c-.7.5-1.6.8-2.7.8-2.1 0-3.9-1.4-4.6-3.4z"
-    />
-    <path
-      fill="#4A90E2"
-      d="M3 7.5C2.4 8.7 2 10.1 2 11.5s.4 2.8 1 4l3.2-2.5c-.2-.5-.3-1-.3-1.5s.1-1 .3-1.5z"
-    />
-    <path
-      fill="#FBBC05"
-      d="M12 4.8c1.3 0 2.5.4 3.4 1.3l2.5-2.4C16.4 2.4 14.4 1.5 12 1.5 7.7 1.5 4 3.5 2.5 7l3.2 2.5C6.1 6.2 8 4.8 12 4.8z"
-    />
-    <path fill="none" d="M2 2h20v20H2z" />
-  </svg>
-);
+import { authClient, useSession } from "@/lib/auth-client";
+import { Shield, Loader2, Mail, CheckCircle } from "lucide-react";
 
 export function SignInContent() {
   const router = useRouter();
@@ -36,14 +13,12 @@ export function SignInContent() {
   const convex = useConvex();
   const { data: sessionData } = useSession();
   const isAuthenticated = Boolean(sessionData?.session);
-  const [isGooglePending, setIsGooglePending] = useState(false);
+  const [email, setEmail] = useState("");
+  const [isPending, setIsPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [magicLinkSent, setMagicLinkSent] = useState(false);
 
   const next = useMemo(() => searchParams?.get("next") ?? null, [searchParams]);
-  const redirectQuery = useMemo(() => {
-    const params = searchParams?.toString();
-    return params ? `?${params}` : "";
-  }, [searchParams]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -63,19 +38,30 @@ export function SignInContent() {
     void redirectAfterSignIn();
   }, [convex, isAuthenticated, next, router]);
 
-  const handleGoogleSignIn = async () => {
+  const handleSendMagicLink = async (event: FormEvent) => {
+    event.preventDefault();
     setError(null);
-    setIsGooglePending(true);
+    setIsPending(true);
+
     try {
-      await signIn.social({
-        provider: "google",
-        redirectTo: `${SIGN_IN_PATH}${redirectQuery}`,
+      const result = await authClient.signIn.magicLink({
+        email,
+        callbackURL: "/signin",
       });
+
+      if (result.error) {
+        setError(result.error.message ?? "Unable to send magic link.");
+        setIsPending(false);
+        return;
+      }
+
+      setMagicLinkSent(true);
+      setIsPending(false);
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Unable to sign in with Google.";
+        err instanceof Error ? err.message : "Unable to send magic link.";
       setError(message);
-      setIsGooglePending(false);
+      setIsPending(false);
     }
   };
 
@@ -108,36 +94,86 @@ export function SignInContent() {
             </p>
           </div>
 
-          <div className="space-y-4">
-            {error && (
-              <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
-                <p className="text-sm text-red-400">{error}</p>
+          {magicLinkSent ? (
+            <div className="space-y-4">
+              <div className="flex flex-col items-center gap-4 py-4">
+                <div className="w-16 h-16 bg-admin-primary-500/20 rounded-full flex items-center justify-center">
+                  <CheckCircle className="w-8 h-8 text-admin-primary-400" />
+                </div>
+                <div className="text-center">
+                  <h2 className="text-xl font-semibold text-white mb-2">Check your email</h2>
+                  <p className="text-slate-400 text-sm">
+                    We sent a magic link to<br />
+                    <span className="text-white font-medium">{email}</span>
+                  </p>
+                </div>
               </div>
-            )}
 
-            <button
-              type="button"
-              onClick={handleGoogleSignIn}
-              disabled={isGooglePending}
-              className="w-full flex items-center justify-center gap-3 py-3 px-4 bg-white hover:bg-gray-50 text-gray-900 font-medium rounded-lg transition-all shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {isGooglePending ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  Connecting to Google...
-                </>
-              ) : (
-                <>
-                  <GoogleIcon />
-                  Continue with Google
-                </>
+              <p className="text-center text-xs text-slate-500">
+                Click the link in your email to sign in. The link expires in 10 minutes.
+              </p>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setMagicLinkSent(false);
+                  setEmail("");
+                }}
+                className="w-full py-2 text-sm text-slate-400 hover:text-slate-300 transition-colors"
+              >
+                Use a different email
+              </button>
+            </div>
+          ) : (
+            <form onSubmit={handleSendMagicLink} className="space-y-4">
+              <div>
+                <label htmlFor="email" className="block text-sm font-medium text-slate-300 mb-2">
+                  Email address
+                </label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
+                  <input
+                    id="email"
+                    type="email"
+                    placeholder="you@example.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full pl-11 pr-4 py-3 bg-admin-surface border border-white/10 rounded-lg text-white placeholder:text-slate-500 focus:border-admin-primary-500 focus:ring-2 focus:ring-admin-primary-500/20 focus:outline-none transition-all"
+                    required
+                    autoFocus
+                  />
+                </div>
+              </div>
+
+              {error && (
+                <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+                  <p className="text-sm text-red-400">{error}</p>
+                </div>
               )}
-            </button>
 
-            <p className="text-center text-xs text-slate-500 mt-4">
-              Access restricted to authorized FLMLNK team members
-            </p>
-          </div>
+              <button
+                type="submit"
+                disabled={isPending || !email}
+                className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-gradient-to-r from-admin-primary-600 to-admin-primary-500 hover:from-admin-primary-500 hover:to-admin-primary-400 text-white font-medium rounded-lg transition-all shadow-lg shadow-admin-primary-500/25 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {isPending ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <Mail className="w-5 h-5" />
+                    Send Magic Link
+                  </>
+                )}
+              </button>
+
+              <p className="text-center text-xs text-slate-500 mt-4">
+                Access restricted to authorized FLMLNK team members
+              </p>
+            </form>
+          )}
         </div>
 
         {/* Footer */}

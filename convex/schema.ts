@@ -22,6 +22,8 @@ export default defineSchema({
     // Account type
     isBusinessAccount: v.optional(v.boolean()),
     isVerified: v.optional(v.boolean()),
+    // Admin access
+    superadmin: v.optional(v.boolean()),
     // For ad features
     adBalanceCents: v.optional(v.number()),
   })
