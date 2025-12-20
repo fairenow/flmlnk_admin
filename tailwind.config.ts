@@ -13,27 +13,73 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        background: "hsl(210, 40%, 98%)",
+        background: "hsl(220, 20%, 97%)",
         foreground: "hsl(222, 47%, 11%)",
-        "flmlnk-dark": "#0e0f11",
-        "flmlnk-card": "#15171b",
-        "flmlnk-rose": "#f02d60",
+        // Admin theme colors - modern tech company palette
+        "admin-dark": "#0f1117",
+        "admin-card": "#1a1d24",
+        "admin-surface": "#22262f",
+        // Primary brand - deep indigo/purple
+        "admin-primary": {
+          50: "#eef2ff",
+          100: "#e0e7ff",
+          200: "#c7d2fe",
+          300: "#a5b4fc",
+          400: "#818cf8",
+          500: "#6366f1",
+          600: "#4f46e5",
+          700: "#4338ca",
+          800: "#3730a3",
+          900: "#312e81",
+          950: "#1e1b4b"
+        },
+        // Accent - electric cyan/teal
+        "admin-accent": {
+          50: "#ecfeff",
+          100: "#cffafe",
+          200: "#a5f3fc",
+          300: "#67e8f9",
+          400: "#22d3ee",
+          500: "#06b6d4",
+          600: "#0891b2",
+          700: "#0e7490",
+          800: "#155e75",
+          900: "#164e63",
+          950: "#083344"
+        },
+        // Success green
+        "admin-success": {
+          400: "#4ade80",
+          500: "#22c55e",
+          600: "#16a34a"
+        },
+        // Warning amber
+        "admin-warning": {
+          400: "#fbbf24",
+          500: "#f59e0b",
+          600: "#d97706"
+        },
+        // Legacy colors for compatibility
+        "flmlnk-dark": "#0f1117",
+        "flmlnk-card": "#1a1d24",
+        "flmlnk-rose": "#6366f1",
         "carpet-red": {
-          50: "#fef2f2",
-          100: "#fee2e2",
-          200: "#fecaca",
-          300: "#fca5a5",
-          400: "#FF5252",
-          500: "#DC143C",
-          600: "#c41230",
-          700: "#a50f28",
-          800: "#8B0000",
-          900: "#7f1d1d",
-          950: "#450a0a"
+          50: "#eef2ff",
+          100: "#e0e7ff",
+          200: "#c7d2fe",
+          300: "#a5b4fc",
+          400: "#818cf8",
+          500: "#6366f1",
+          600: "#4f46e5",
+          700: "#4338ca",
+          800: "#3730a3",
+          900: "#312e81",
+          950: "#1e1b4b"
         }
       },
       boxShadow: {
-        glow: "0 0 0 1px rgba(255,255,255,0.04), 0 40px 80px rgba(0,0,0,0.45)"
+        glow: "0 0 0 1px rgba(99,102,241,0.15), 0 40px 80px rgba(0,0,0,0.45)",
+        "admin-glow": "0 0 20px rgba(99,102,241,0.25), 0 0 40px rgba(99,102,241,0.1)"
       }
     }
   },
