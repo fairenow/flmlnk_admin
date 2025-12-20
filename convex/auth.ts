@@ -13,7 +13,7 @@ type EmailCallbackParams = {
   token: string;
 };
 
-const siteUrl = process.env.SITE_URL!;
+const siteUrl = process.env.ADMIN_SITE_URL!;
 const convexSiteUrl = process.env.CONVEX_SITE_URL;
 
 // Build trusted origins list with the app URL and common variants
