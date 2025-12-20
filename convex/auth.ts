@@ -13,30 +13,11 @@ type EmailCallbackParams = {
   token: string;
 };
 
-const adminSiteUrl = process.env.ADMIN_SITE_URL;
 const siteUrl = process.env.SITE_URL!;
 const convexSiteUrl = process.env.CONVEX_SITE_URL;
 
-// Use ADMIN_SITE_URL as primary for this admin project, fallback to SITE_URL
-const baseUrl = adminSiteUrl || siteUrl;
-
-// DEBUG: Log environment variables on module load
-console.log(`[CONVEX AUTH DEBUG] ADMIN_SITE_URL: ${adminSiteUrl}`);
-console.log(`[CONVEX AUTH DEBUG] SITE_URL: ${siteUrl}`);
-console.log(`[CONVEX AUTH DEBUG] CONVEX_SITE_URL: ${convexSiteUrl}`);
-console.log(`[CONVEX AUTH DEBUG] baseUrl: ${baseUrl}`);
-console.log(`[CONVEX AUTH DEBUG] NODE_ENV: ${process.env.NODE_ENV}`);
-
-// Build trusted origins list with both the app URL and common variants
-// This ensures auth works across different environments and proxy configurations
-const trustedOriginsList: string[] = [baseUrl];
-// Add both ADMIN_SITE_URL and SITE_URL to trusted origins if they differ
-if (adminSiteUrl && adminSiteUrl !== baseUrl) {
-  trustedOriginsList.push(adminSiteUrl);
-}
-if (siteUrl && siteUrl !== baseUrl) {
-  trustedOriginsList.push(siteUrl);
-}
+// Build trusted origins list with the app URL and common variants
+const trustedOriginsList: string[] = [siteUrl];
 if (convexSiteUrl) {
   trustedOriginsList.push(convexSiteUrl);
 }
@@ -44,9 +25,6 @@ if (convexSiteUrl) {
 if (process.env.NODE_ENV !== "production" || siteUrl.includes("localhost")) {
   trustedOriginsList.push("http://localhost:3000", "http://localhost:3001");
 }
-
-// DEBUG: Log the final trusted origins list
-console.log(`[CONVEX AUTH DEBUG] trustedOriginsList: ${JSON.stringify(trustedOriginsList)}`);
 
 export const authComponent = createClient<DataModel>(components.betterAuth);
 
@@ -58,7 +36,7 @@ export const createAuth = (
     logger: {
       disabled: optionsOnly,
     },
-    baseURL: baseUrl,
+    baseURL: siteUrl,
     trustedOrigins: trustedOriginsList,
     database: authComponent.adapter(ctx),
     emailAndPassword: {
