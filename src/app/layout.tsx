@@ -7,22 +7,22 @@ import { ConvexClientProvider } from "./ConvexClientProvider";
 const GTM_ID = process.env.NEXT_PUBLIC_GTM_ID;
 
 export const metadata: Metadata = {
-  title: "FlmLnk",
-  description: "Marketing engine for filmmakers and their films.",
+  title: "FLMLNK Admin",
+  description: "Internal admin dashboard for FLMLNK team collaboration and management.",
   icons: {
     icon: "/flmlnk_icon.png",
     shortcut: "/flmlnk_icon.png",
     apple: "/flmlnk_icon.png",
   },
   openGraph: {
-    title: "FlmLnk",
-    description: "Marketing engine for filmmakers and their films.",
+    title: "FLMLNK Admin",
+    description: "Internal admin dashboard for FLMLNK team collaboration and management.",
     images: [
       {
         url: "/marketing_red.png",
         width: 1200,
         height: 630,
-        alt: "FLMLNK marketing preview",
+        alt: "FLMLNK Admin Dashboard",
       },
     ],
   },

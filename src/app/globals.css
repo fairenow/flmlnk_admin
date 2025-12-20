@@ -2,39 +2,45 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Dark theme (default) */
+/* Admin Dark theme (default) - Modern tech company feel */
 :root,
 .dark {
   color-scheme: dark;
-  --theme-bg: #0b0d10;
-  --theme-bg-secondary: #11141b;
-  --theme-bg-card: #0f1219;
-  --theme-bg-input: #161a24;
-  --theme-bg-sidebar: linear-gradient(to bottom, #1b1f27, #11141b, #0c0f15);
+  --theme-bg: #0f1117;
+  --theme-bg-secondary: #1a1d24;
+  --theme-bg-card: #1a1d24;
+  --theme-bg-input: #22262f;
+  --theme-bg-sidebar: linear-gradient(to bottom, #1a1d24, #0f1117, #0a0c10);
   --theme-text-primary: #ffffff;
   --theme-text-secondary: #e2e8f0;
   --theme-text-muted: #94a3b8;
-  --theme-border: rgba(127, 29, 29, 0.4);
-  --theme-border-focus: #f53c56;
-  --theme-section-border: rgba(127, 29, 29, 0.5);
-  --theme-card-shadow: rgba(69, 10, 10, 0.3);
+  --theme-border: rgba(99, 102, 241, 0.25);
+  --theme-border-focus: #6366f1;
+  --theme-section-border: rgba(99, 102, 241, 0.3);
+  --theme-card-shadow: rgba(99, 102, 241, 0.15);
+  --admin-primary: #6366f1;
+  --admin-primary-hover: #4f46e5;
+  --admin-accent: #06b6d4;
 }
 
-/* Light theme */
+/* Admin Light theme */
 .light {
   color-scheme: light;
-  --theme-bg: #ffffff;
-  --theme-bg-secondary: #f8fafc;
+  --theme-bg: #f8fafc;
+  --theme-bg-secondary: #ffffff;
   --theme-bg-card: #ffffff;
   --theme-bg-input: #ffffff;
-  --theme-bg-sidebar: linear-gradient(to bottom, #1b1f27, #11141b, #0c0f15);
+  --theme-bg-sidebar: linear-gradient(to bottom, #1a1d24, #0f1117, #0a0c10);
   --theme-text-primary: #0f172a;
   --theme-text-secondary: #334155;
   --theme-text-muted: #64748b;
-  --theme-border: rgba(220, 20, 60, 0.4);
-  --theme-border-focus: #dc143c;
-  --theme-section-border: rgba(220, 20, 60, 0.5);
-  --theme-card-shadow: rgba(220, 20, 60, 0.15);
+  --theme-border: rgba(99, 102, 241, 0.3);
+  --theme-border-focus: #4f46e5;
+  --theme-section-border: rgba(99, 102, 241, 0.35);
+  --theme-card-shadow: rgba(99, 102, 241, 0.12);
+  --admin-primary: #4f46e5;
+  --admin-primary-hover: #4338ca;
+  --admin-accent: #0891b2;
 }
 
 html {
@@ -54,19 +60,19 @@ body {
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
-/* Dark theme body gradient */
+/* Admin dark theme body gradient - modern indigo/purple tones */
 .dark body,
 :root body {
-  background: radial-gradient(circle at 20% 20%, rgba(240, 45, 96, 0.08), transparent 35%),
-    radial-gradient(circle at 80% 0%, rgba(255, 77, 121, 0.12), transparent 30%),
-    #0b0d10;
+  background: radial-gradient(circle at 20% 20%, rgba(99, 102, 241, 0.08), transparent 35%),
+    radial-gradient(circle at 80% 0%, rgba(6, 182, 212, 0.06), transparent 30%),
+    #0f1117;
 }
 
-/* Light theme body - clean white with subtle red accent */
+/* Admin light theme body - clean with subtle indigo accent */
 .light body {
-  background: radial-gradient(circle at 20% 20%, rgba(220, 20, 60, 0.03), transparent 40%),
-    radial-gradient(circle at 80% 0%, rgba(220, 20, 60, 0.02), transparent 35%),
-    #ffffff;
+  background: radial-gradient(circle at 20% 20%, rgba(99, 102, 241, 0.04), transparent 40%),
+    radial-gradient(circle at 80% 0%, rgba(6, 182, 212, 0.03), transparent 35%),
+    #f8fafc;
 }
 
 iframe[src*="player.vimeo.com"],

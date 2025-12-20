@@ -1,36 +1,14 @@
 "use client";
 
-import Image from "next/image";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState, useTransition } from "react";
 import { useConvex } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { signIn, useSession } from "@/lib/auth-client";
-import { SIGN_IN_PATH } from "@/lib/routes";
-import { OnboardingRightHero } from "../components/onboarding/OnboardingRightHero";
+import { Shield, Mail, ArrowRight, Loader2 } from "lucide-react";
 
-const GoogleIcon = () => (
-  <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
-    <path
-      fill="#EA4335"
-      d="M12 10.2v3.6h5.1c-.2 1.2-.8 2.1-1.6 2.8l2.6 2c1.5-1.4 2.4-3.5 2.4-6 0-.6-.1-1.2-.2-1.8H12z"
-    />
-    <path
-      fill="#34A853"
-      d="M5.3 14.3l-.8.6-2 1.6C4 20 7.7 22 12 22c2.4 0 4.4-.8 5.9-2.4l-2.6-2c-.7.5-1.6.8-2.7.8-2.1 0-3.9-1.4-4.6-3.4z"
-    />
-    <path
-      fill="#4A90E2"
-      d="M3 7.5C2.4 8.7 2 10.1 2 11.5s.4 2.8 1 4l3.2-2.5c-.2-.5-.3-1-.3-1.5s.1-1 .3-1.5z"
-    />
-    <path
-      fill="#FBBC05"
-      d="M12 4.8c1.3 0 2.5.4 3.4 1.3l2.5-2.4C16.4 2.4 14.4 1.5 12 1.5 7.7 1.5 4 3.5 2.5 7l3.2 2.5C6.1 6.2 8 4.8 12 4.8z"
-    />
-    <path fill="none" d="M2 2h20v20H2z" />
-  </svg>
-);
+// Superadmin email - the only allowed user for this admin dashboard
+const SUPERADMIN_EMAIL = "flmlnk2025@gmail.com";
 
 export function SignInContent() {
   const router = useRouter();
@@ -40,15 +18,11 @@ export function SignInContent() {
   const isAuthenticated = Boolean(sessionData?.session);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [isGooglePending, setIsGooglePending] = useState(false);
+  const [step, setStep] = useState<"email" | "password">("email");
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
   const next = useMemo(() => searchParams?.get("next") ?? null, [searchParams]);
-  const redirectQuery = useMemo(() => {
-    const params = searchParams?.toString();
-    return params ? `?${params}` : "";
-  }, [searchParams]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -61,14 +35,26 @@ export function SignInContent() {
       } else if (status.hasProfile && status.slug) {
         router.push("/dashboard/actor");
       } else {
-        router.push("/onboarding");
+        router.push("/dashboard/actor");
       }
     };
 
     void redirectAfterSignIn();
   }, [convex, isAuthenticated, next, router]);
 
-  const handleEmailSignIn = async (event: FormEvent) => {
+  const handleEmailCheck = (event: FormEvent) => {
+    event.preventDefault();
+    setError(null);
+
+    if (email.toLowerCase() !== SUPERADMIN_EMAIL.toLowerCase()) {
+      setError("Access denied. This admin dashboard is restricted to authorized personnel only.");
+      return;
+    }
+
+    setStep("password");
+  };
+
+  const handleSignIn = async (event: FormEvent) => {
     event.preventDefault();
     setError(null);
 
@@ -82,7 +68,6 @@ export function SignInContent() {
         if (result.error) {
           setError(result.error.message ?? "Unable to sign in.");
         }
-        // If successful, the useEffect will handle the redirect
       } catch (err) {
         const message =
           err instanceof Error ? err.message : "Unable to sign in.";
@@ -91,126 +76,137 @@ export function SignInContent() {
     });
   };
 
-  const handleGoogleSignIn = async () => {
-    setError(null);
-    setIsGooglePending(true);
-    try {
-      await signIn.social({
-        provider: "google",
-        redirectTo: `${SIGN_IN_PATH}${redirectQuery}`,
-      });
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Unable to sign in with Google.";
-      setError(message);
-      setIsGooglePending(false);
-    }
-  };
-
   return (
-    <div className="min-h-screen bg-[#05040A] text-slate-900 flex">
-      {/* LEFT */}
-      <div className="w-full lg:w-[50%] bg-white flex flex-col">
-        <header className="px-8 pt-8 pb-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center">
-            <Image
-              src="/black_flmlnk.png"
-              alt="FLMLNK logo"
-              width={120}
-              height={32}
-            />
-          </Link>
-        </header>
-
-        <main className="flex-1 px-8 pb-10 flex items-center">
-          <div className="w-full max-w-md">
-            <h1 className="text-4xl md:text-[2.6rem] font-semibold leading-tight mb-3">
-              Welcome Back.
-              <br />
-              Your Story
-              <br />
-              <span className="text-carpet-red-500">Awaits.</span>
-            </h1>
-            <p className="text-sm text-slate-500 mb-6">
-              Pick up where you left off showcasing your work on professional,
-              streaming-ready pages built to get your story seen.
-            </p>
-
-            <div className="space-y-4">
-              <button
-                type="button"
-                onClick={handleGoogleSignIn}
-                disabled={isGooglePending || isPending}
-                className="w-full inline-flex items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium shadow-sm transition hover:bg-slate-50 disabled:opacity-60"
-              >
-                <GoogleIcon />
-                {isGooglePending ? "Connecting to Google…" : "Continue with Google"}
-              </button>
-
-              {!isAuthenticated && (
-                <>
-                  <div className="relative text-center text-xs text-slate-400">
-                    <span className="absolute left-0 top-1/2 h-px w-full bg-slate-200 -z-10" />
-                    <span className="relative inline-block bg-white px-3">or</span>
-                  </div>
-
-                  <form className="space-y-3" onSubmit={handleEmailSignIn}>
-                    <div>
-                      <input
-                        type="email"
-                        placeholder="Enter your email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:border-[#f53c56] focus:ring-2 focus:ring-[#f53c56]/30 focus:outline-none"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <input
-                        type="password"
-                        placeholder="Enter your password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:border-[#f53c56] focus:ring-2 focus:ring-[#f53c56]/30 focus:outline-none"
-                        required
-                      />
-                    </div>
-                    <div className="flex justify-end">
-                      <Link
-                        href="/forgot-password"
-                        className="text-xs text-carpet-red-500 hover:underline"
-                      >
-                        Forgot password?
-                      </Link>
-                    </div>
-                    {error && <p className="text-xs text-red-500">{error}</p>}
-
-                    <button
-                      type="submit"
-                      disabled={isPending}
-                      className="w-full rounded-md bg-gradient-to-r from-black via-carpet-red-600 to-carpet-red-500 py-2.5 text-sm font-medium text-white shadow-md disabled:opacity-60"
-                    >
-                      {isPending ? "Signing in..." : "Sign In →"}
-                    </button>
-                  </form>
-
-                  <p className="text-xs text-slate-500">
-                    New here?{" "}
-                    <Link href="/signup" className="text-carpet-red-500 font-medium">
-                      Create your page
-                    </Link>
-                    .
-                  </p>
-                </>
-              )}
-            </div>
-          </div>
-        </main>
+    <div className="min-h-screen bg-admin-dark flex items-center justify-center p-4">
+      {/* Background gradient effects */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-0 left-1/4 w-96 h-96 bg-admin-primary-500/10 rounded-full blur-3xl" />
+        <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-admin-accent-500/10 rounded-full blur-3xl" />
       </div>
 
-      {/* RIGHT */}
-      <div className="hidden lg:flex w-[50%] bg-gradient-to-br from-[#05040A] via-[#120014] to-[#190015] items-center justify-center">
-        <OnboardingRightHero />
+      <div className="relative w-full max-w-md">
+        {/* Admin Badge */}
+        <div className="flex items-center justify-center gap-2 mb-8">
+          <div className="flex items-center gap-2 px-4 py-2 bg-admin-card border border-admin-primary-500/30 rounded-full">
+            <Shield className="w-4 h-4 text-admin-primary-400" />
+            <span className="text-sm font-medium text-admin-primary-300 tracking-wider">ADMIN</span>
+          </div>
+        </div>
+
+        {/* Main Card */}
+        <div className="bg-admin-card border border-white/10 rounded-2xl p-8 shadow-admin-glow">
+          {/* Logo/Brand */}
+          <div className="text-center mb-8">
+            <h1 className="text-3xl font-bold text-white tracking-tight">
+              FLMLNK <span className="text-admin-primary-400">Admin</span>
+            </h1>
+            <p className="text-slate-400 mt-2 text-sm">
+              Internal team dashboard
+            </p>
+          </div>
+
+          {step === "email" ? (
+            <form onSubmit={handleEmailCheck} className="space-y-4">
+              <div>
+                <label htmlFor="email" className="block text-sm font-medium text-slate-300 mb-2">
+                  Admin Email
+                </label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
+                  <input
+                    id="email"
+                    type="email"
+                    placeholder="Enter your admin email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full pl-11 pr-4 py-3 bg-admin-surface border border-white/10 rounded-lg text-white placeholder:text-slate-500 focus:border-admin-primary-500 focus:ring-2 focus:ring-admin-primary-500/20 focus:outline-none transition-all"
+                    required
+                    autoFocus
+                  />
+                </div>
+              </div>
+
+              {error && (
+                <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+                  <p className="text-sm text-red-400">{error}</p>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-gradient-to-r from-admin-primary-600 to-admin-primary-500 hover:from-admin-primary-500 hover:to-admin-primary-400 text-white font-medium rounded-lg transition-all shadow-lg shadow-admin-primary-500/25"
+              >
+                Continue
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleSignIn} className="space-y-4">
+              <div className="p-3 bg-admin-primary-500/10 border border-admin-primary-500/30 rounded-lg mb-4">
+                <p className="text-sm text-admin-primary-300">
+                  Signing in as <span className="font-medium">{email}</span>
+                </p>
+              </div>
+
+              <div>
+                <label htmlFor="password" className="block text-sm font-medium text-slate-300 mb-2">
+                  Password
+                </label>
+                <input
+                  id="password"
+                  type="password"
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full px-4 py-3 bg-admin-surface border border-white/10 rounded-lg text-white placeholder:text-slate-500 focus:border-admin-primary-500 focus:ring-2 focus:ring-admin-primary-500/20 focus:outline-none transition-all"
+                  required
+                  autoFocus
+                />
+              </div>
+
+              {error && (
+                <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+                  <p className="text-sm text-red-400">{error}</p>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={isPending}
+                className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-gradient-to-r from-admin-primary-600 to-admin-primary-500 hover:from-admin-primary-500 hover:to-admin-primary-400 text-white font-medium rounded-lg transition-all shadow-lg shadow-admin-primary-500/25 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Signing in...
+                  </>
+                ) : (
+                  <>
+                    Sign In
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setStep("email");
+                  setError(null);
+                  setPassword("");
+                }}
+                className="w-full py-2 text-sm text-slate-400 hover:text-slate-300 transition-colors"
+              >
+                Use a different email
+              </button>
+            </form>
+          )}
+        </div>
+
+        {/* Footer */}
+        <p className="text-center text-xs text-slate-500 mt-6">
+          &copy; {new Date().getFullYear()} FLMLNK. Internal use only.
+        </p>
       </div>
     </div>
   );
