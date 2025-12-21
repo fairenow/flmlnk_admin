@@ -640,6 +640,17 @@ export const getAllBoostCampaignsAdmin = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    // Admin authorization check
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+
+    const currentUser = await ctx.db
+      .query("users")
+      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
+      .unique();
+
+    if (!currentUser?.superadmin) throw new Error("Admin access required");
+
     // Get all campaigns
     let campaigns;
     if (args.status) {
@@ -779,6 +790,17 @@ export const getAllBoostCampaignsAdmin = query({
 export const getBoostSummaryAdmin = query({
   args: {},
   handler: async (ctx) => {
+    // Admin authorization check
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+
+    const currentUser = await ctx.db
+      .query("users")
+      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
+      .unique();
+
+    if (!currentUser?.superadmin) throw new Error("Admin access required");
+
     const campaigns = await ctx.db.query("boost_campaigns").collect();
 
     const totalCampaigns = campaigns.length;

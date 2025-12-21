@@ -803,6 +803,17 @@ export const getDeepAnalyticsAdmin = query({
     filmCount: v.optional(v.union(v.literal("one"), v.literal("multiple"))),
   },
   async handler(ctx, args) {
+    // Admin authorization check
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+
+    const currentUser = await ctx.db
+      .query("users")
+      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
+      .unique();
+
+    if (!currentUser?.superadmin) throw new Error("Admin access required");
+
     const daysBack = args.daysBack ?? 30;
     const cutoffTime = Date.now() - daysBack * 24 * 60 * 60 * 1000;
 
@@ -947,9 +958,20 @@ export const searchUsersAndFilmsAdmin = query({
     query: v.string(),
   },
   async handler(ctx, args) {
+    // Admin authorization check
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+
+    const currentUser = await ctx.db
+      .query("users")
+      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
+      .unique();
+
+    if (!currentUser?.superadmin) throw new Error("Admin access required");
+
     const searchQuery = args.query.toLowerCase().trim();
     if (!searchQuery || searchQuery.length < 2) {
-      return { users: [], films: [] };
+      return { users: [], films: [], profiles: [] };
     }
 
     // Search users (by name, email, display name)
@@ -1038,6 +1060,17 @@ export const getProfileAnalyticsAdmin = query({
     daysBack: v.optional(v.number()),
   },
   async handler(ctx, args) {
+    // Admin authorization check
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+
+    const currentUser = await ctx.db
+      .query("users")
+      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
+      .unique();
+
+    if (!currentUser?.superadmin) throw new Error("Admin access required");
+
     const daysBack = args.daysBack ?? 30;
     const cutoffTime = Date.now() - daysBack * 24 * 60 * 60 * 1000;
 
@@ -1137,6 +1170,17 @@ export const getAllAssetsAdmin = query({
     sortBy: v.optional(v.union(v.literal("recent"), v.literal("score"), v.literal("viral"))),
   },
   async handler(ctx, args) {
+    // Admin authorization check
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+
+    const currentUser = await ctx.db
+      .query("users")
+      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
+      .unique();
+
+    if (!currentUser?.superadmin) throw new Error("Admin access required");
+
     const limit = args.limit ?? 50;
     const assetType = args.assetType ?? "all";
     const sortBy = args.sortBy ?? "recent";
@@ -1310,6 +1354,17 @@ export const getAllAssetsAdmin = query({
 export const getAssetSummaryAdmin = query({
   args: {},
   async handler(ctx) {
+    // Admin authorization check
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+
+    const currentUser = await ctx.db
+      .query("users")
+      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
+      .unique();
+
+    if (!currentUser?.superadmin) throw new Error("Admin access required");
+
     const [clips, memes, gifs] = await Promise.all([
       ctx.db.query("generated_clips").collect(),
       ctx.db.query("generated_memes").collect(),
@@ -1398,6 +1453,17 @@ export const getAssetSummaryAdmin = query({
 export const getAllUsersAdmin = query({
   args: {},
   async handler(ctx) {
+    // Admin authorization check
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+
+    const currentUser = await ctx.db
+      .query("users")
+      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
+      .unique();
+
+    if (!currentUser?.superadmin) throw new Error("Admin access required");
+
     const users = await ctx.db.query("users").collect();
     const profiles = await ctx.db.query("actor_profiles").collect();
 
