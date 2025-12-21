@@ -1164,13 +1164,15 @@ export const getAllAssetsAdmin = query({
 
     // Fetch clips
     if (assetType === "all" || assetType === "clip") {
-      let clipsQuery = ctx.db.query("generated_clips");
-      if (args.profileId) {
-        clipsQuery = clipsQuery.withIndex("by_actorProfile", (q) =>
-          q.eq("actorProfileId", args.profileId!)
-        );
-      }
-      const clips = await clipsQuery.order("desc").take(limit);
+      const clips = args.profileId
+        ? await ctx.db
+            .query("generated_clips")
+            .withIndex("by_actorProfile", (q) =>
+              q.eq("actorProfileId", args.profileId!)
+            )
+            .order("desc")
+            .take(limit)
+        : await ctx.db.query("generated_clips").order("desc").take(limit);
 
       for (const clip of clips) {
         assets.push({
@@ -1187,13 +1189,15 @@ export const getAllAssetsAdmin = query({
 
     // Fetch memes
     if (assetType === "all" || assetType === "meme") {
-      let memesQuery = ctx.db.query("generated_memes");
-      if (args.profileId) {
-        memesQuery = memesQuery.withIndex("by_actorProfile", (q) =>
-          q.eq("actorProfileId", args.profileId!)
-        );
-      }
-      const memes = await memesQuery.order("desc").take(limit);
+      const memes = args.profileId
+        ? await ctx.db
+            .query("generated_memes")
+            .withIndex("by_actorProfile", (q) =>
+              q.eq("actorProfileId", args.profileId!)
+            )
+            .order("desc")
+            .take(limit)
+        : await ctx.db.query("generated_memes").order("desc").take(limit);
 
       for (const meme of memes) {
         let thumbnailUrl: string | null = null;
@@ -1221,13 +1225,15 @@ export const getAllAssetsAdmin = query({
 
     // Fetch GIFs
     if (assetType === "all" || assetType === "gif") {
-      let gifsQuery = ctx.db.query("generated_gifs");
-      if (args.profileId) {
-        gifsQuery = gifsQuery.withIndex("by_actorProfile", (q) =>
-          q.eq("actorProfileId", args.profileId!)
-        );
-      }
-      const gifs = await gifsQuery.order("desc").take(limit);
+      const gifs = args.profileId
+        ? await ctx.db
+            .query("generated_gifs")
+            .withIndex("by_actorProfile", (q) =>
+              q.eq("actorProfileId", args.profileId!)
+            )
+            .order("desc")
+            .take(limit)
+        : await ctx.db.query("generated_gifs").order("desc").take(limit);
 
       for (const gif of gifs) {
         let thumbnailUrl: string | null = null;
