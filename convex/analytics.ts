@@ -1119,3 +1119,311 @@ export const getProfileAnalyticsAdmin = query({
     };
   },
 });
+
+// =============================================================================
+// ADMIN QUERIES - Assets
+// =============================================================================
+
+/**
+ * Get all assets (clips, memes, GIFs) across all users (admin view)
+ * Returns enriched data with user info and asset details
+ */
+export const getAllAssetsAdmin = query({
+  args: {
+    assetType: v.optional(v.union(v.literal("clip"), v.literal("meme"), v.literal("gif"), v.literal("all"))),
+    userId: v.optional(v.id("users")),
+    profileId: v.optional(v.id("actor_profiles")),
+    limit: v.optional(v.number()),
+    sortBy: v.optional(v.union(v.literal("recent"), v.literal("score"), v.literal("viral"))),
+  },
+  async handler(ctx, args) {
+    const limit = args.limit ?? 50;
+    const assetType = args.assetType ?? "all";
+    const sortBy = args.sortBy ?? "recent";
+    const r2Bucket = process.env.R2_PUBLIC_BUCKET_URL;
+
+    type AssetData = {
+      _id: string;
+      type: "clip" | "meme" | "gif";
+      title: string;
+      thumbnailUrl: string | null;
+      createdAt: number;
+      score?: number;
+      viralScore?: number;
+      actorProfileId: Id<"actor_profiles">;
+      userId?: Id<"users">;
+      profileName?: string;
+      profileSlug?: string;
+      userName?: string;
+      userEmail?: string;
+      boosted?: boolean;
+      boostCampaignId?: Id<"boost_campaigns">;
+    };
+
+    const assets: AssetData[] = [];
+
+    // Fetch clips
+    if (assetType === "all" || assetType === "clip") {
+      const clips = args.profileId
+        ? await ctx.db
+            .query("generated_clips")
+            .withIndex("by_actorProfile", (q) =>
+              q.eq("actorProfileId", args.profileId!)
+            )
+            .order("desc")
+            .take(limit)
+        : await ctx.db.query("generated_clips").order("desc").take(limit);
+
+      for (const clip of clips) {
+        assets.push({
+          _id: clip._id,
+          type: "clip",
+          title: clip.title,
+          thumbnailUrl: clip.customThumbnailUrl || clip.thumbnailUrl || null,
+          createdAt: clip.createdAt,
+          score: clip.score,
+          actorProfileId: clip.actorProfileId,
+        });
+      }
+    }
+
+    // Fetch memes
+    if (assetType === "all" || assetType === "meme") {
+      const memes = args.profileId
+        ? await ctx.db
+            .query("generated_memes")
+            .withIndex("by_actorProfile", (q) =>
+              q.eq("actorProfileId", args.profileId!)
+            )
+            .order("desc")
+            .take(limit)
+        : await ctx.db.query("generated_memes").order("desc").take(limit);
+
+      for (const meme of memes) {
+        let thumbnailUrl: string | null = null;
+        if (meme.memeStorageId) {
+          thumbnailUrl = await ctx.storage.getUrl(meme.memeStorageId);
+        } else if (r2Bucket && meme.r2MemeKey) {
+          thumbnailUrl = `${r2Bucket}/${meme.r2MemeKey}`;
+        } else if (r2Bucket && meme.r2FrameKey) {
+          thumbnailUrl = `${r2Bucket}/${meme.r2FrameKey}`;
+        } else {
+          thumbnailUrl = meme.memeUrl || meme.frameUrl || null;
+        }
+
+        assets.push({
+          _id: meme._id,
+          type: "meme",
+          title: meme.caption?.slice(0, 50) || "Meme",
+          thumbnailUrl,
+          createdAt: meme.createdAt,
+          viralScore: meme.viralScore,
+          actorProfileId: meme.actorProfileId,
+        });
+      }
+    }
+
+    // Fetch GIFs
+    if (assetType === "all" || assetType === "gif") {
+      const gifs = args.profileId
+        ? await ctx.db
+            .query("generated_gifs")
+            .withIndex("by_actorProfile", (q) =>
+              q.eq("actorProfileId", args.profileId!)
+            )
+            .order("desc")
+            .take(limit)
+        : await ctx.db.query("generated_gifs").order("desc").take(limit);
+
+      for (const gif of gifs) {
+        let thumbnailUrl: string | null = null;
+        if (gif.storageId) {
+          thumbnailUrl = await ctx.storage.getUrl(gif.storageId);
+        } else if (r2Bucket && gif.r2GifKey) {
+          thumbnailUrl = `${r2Bucket}/${gif.r2GifKey}`;
+        } else {
+          thumbnailUrl = gif.gifUrl || null;
+        }
+
+        assets.push({
+          _id: gif._id,
+          type: "gif",
+          title: gif.title || "GIF",
+          thumbnailUrl,
+          createdAt: gif.createdAt,
+          viralScore: gif.viralScore,
+          actorProfileId: gif.actorProfileId,
+        });
+      }
+    }
+
+    // Get boost campaigns to check which assets are boosted
+    const boostCampaigns = await ctx.db.query("boost_campaigns").collect();
+    const boostedAssets = new Map<string, Id<"boost_campaigns">>();
+    for (const campaign of boostCampaigns) {
+      if (campaign.assetId && (campaign.status === "active" || campaign.status === "completed")) {
+        boostedAssets.set(campaign.assetId, campaign._id);
+      }
+    }
+
+    // Enrich assets with user info
+    const enrichedAssets = await Promise.all(
+      assets.map(async (asset) => {
+        const profile = await ctx.db.get(asset.actorProfileId);
+        const user = profile ? await ctx.db.get(profile.userId) : null;
+
+        return {
+          ...asset,
+          profileName: profile?.displayName,
+          profileSlug: profile?.slug,
+          userName: user?.name || user?.email,
+          userEmail: user?.email,
+          userId: profile?.userId,
+          boosted: boostedAssets.has(asset._id),
+          boostCampaignId: boostedAssets.get(asset._id),
+        };
+      })
+    );
+
+    // Filter by user if specified
+    let filteredAssets = enrichedAssets;
+    if (args.userId) {
+      filteredAssets = enrichedAssets.filter((a) => a.userId === args.userId);
+    }
+
+    // Sort
+    if (sortBy === "score") {
+      filteredAssets.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+    } else if (sortBy === "viral") {
+      filteredAssets.sort((a, b) => (b.viralScore ?? 0) - (a.viralScore ?? 0));
+    } else {
+      filteredAssets.sort((a, b) => b.createdAt - a.createdAt);
+    }
+
+    return filteredAssets.slice(0, limit);
+  },
+});
+
+/**
+ * Get asset summary stats for admin dashboard
+ */
+export const getAssetSummaryAdmin = query({
+  args: {},
+  async handler(ctx) {
+    const [clips, memes, gifs] = await Promise.all([
+      ctx.db.query("generated_clips").collect(),
+      ctx.db.query("generated_memes").collect(),
+      ctx.db.query("generated_gifs").collect(),
+    ]);
+
+    // Count by time periods
+    const now = Date.now();
+    const today = now - 24 * 60 * 60 * 1000;
+    const thisWeek = now - 7 * 24 * 60 * 60 * 1000;
+    const thisMonth = now - 30 * 24 * 60 * 60 * 1000;
+
+    const clipsToday = clips.filter((c) => c.createdAt >= today).length;
+    const memesToday = memes.filter((m) => m.createdAt >= today).length;
+    const gifsToday = gifs.filter((g) => g.createdAt >= today).length;
+
+    const clipsWeek = clips.filter((c) => c.createdAt >= thisWeek).length;
+    const memesWeek = memes.filter((m) => m.createdAt >= thisWeek).length;
+    const gifsWeek = gifs.filter((g) => g.createdAt >= thisWeek).length;
+
+    const clipsMonth = clips.filter((c) => c.createdAt >= thisMonth).length;
+    const memesMonth = memes.filter((m) => m.createdAt >= thisMonth).length;
+    const gifsMonth = gifs.filter((g) => g.createdAt >= thisMonth).length;
+
+    // Get unique profiles
+    const profileIds = new Set([
+      ...clips.map((c) => c.actorProfileId.toString()),
+      ...memes.map((m) => m.actorProfileId.toString()),
+      ...gifs.map((g) => g.actorProfileId.toString()),
+    ]);
+
+    // Get boost campaigns
+    const boostCampaigns = await ctx.db.query("boost_campaigns").collect();
+    const activeBoostedAssets = boostCampaigns
+      .filter((c) => c.status === "active" && c.assetId)
+      .map((c) => c.assetId);
+
+    // Calculate average scores
+    const clipScores = clips.filter((c) => c.score).map((c) => c.score!);
+    const memeScores = memes.filter((m) => m.viralScore).map((m) => m.viralScore!);
+    const gifScores = gifs.filter((g) => g.viralScore).map((g) => g.viralScore!);
+
+    const avgClipScore = clipScores.length > 0
+      ? Math.round(clipScores.reduce((a, b) => a + b, 0) / clipScores.length)
+      : 0;
+    const avgMemeScore = memeScores.length > 0
+      ? Math.round(memeScores.reduce((a, b) => a + b, 0) / memeScores.length)
+      : 0;
+    const avgGifScore = gifScores.length > 0
+      ? Math.round(gifScores.reduce((a, b) => a + b, 0) / gifScores.length)
+      : 0;
+
+    return {
+      totalClips: clips.length,
+      totalMemes: memes.length,
+      totalGifs: gifs.length,
+      totalAssets: clips.length + memes.length + gifs.length,
+      // Today
+      clipsToday,
+      memesToday,
+      gifsToday,
+      assetsToday: clipsToday + memesToday + gifsToday,
+      // This week
+      clipsWeek,
+      memesWeek,
+      gifsWeek,
+      assetsWeek: clipsWeek + memesWeek + gifsWeek,
+      // This month
+      clipsMonth,
+      memesMonth,
+      gifsMonth,
+      assetsMonth: clipsMonth + memesMonth + gifsMonth,
+      // Other stats
+      uniqueProfiles: profileIds.size,
+      activeBoostedCount: activeBoostedAssets.length,
+      avgClipScore,
+      avgMemeScore,
+      avgGifScore,
+    };
+  },
+});
+
+/**
+ * Get all users for filtering dropdown (admin view)
+ */
+export const getAllUsersAdmin = query({
+  args: {},
+  async handler(ctx) {
+    const users = await ctx.db.query("users").collect();
+    const profiles = await ctx.db.query("actor_profiles").collect();
+
+    // Build user-profile map
+    const profilesByUser = new Map<string, typeof profiles>();
+    for (const profile of profiles) {
+      const key = profile.userId.toString();
+      if (!profilesByUser.has(key)) {
+        profilesByUser.set(key, []);
+      }
+      profilesByUser.get(key)!.push(profile);
+    }
+
+    return users.map((user) => {
+      const userProfiles = profilesByUser.get(user._id.toString()) || [];
+      return {
+        _id: user._id,
+        name: user.name || user.email,
+        email: user.email,
+        profileCount: userProfiles.length,
+        profiles: userProfiles.map((p) => ({
+          _id: p._id,
+          displayName: p.displayName,
+          slug: p.slug,
+        })),
+      };
+    });
+  },
+});

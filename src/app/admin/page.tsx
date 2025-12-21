@@ -7,6 +7,7 @@ import {
   Mail,
   Settings,
   ChevronRight,
+  Image as ImageIcon,
 } from "lucide-react";
 
 export default function AdminPage() {
@@ -24,6 +25,13 @@ export default function AdminPage() {
       icon: BarChart3,
       href: "/admin/analytics",
       color: "from-indigo-500 to-purple-600",
+    },
+    {
+      title: "All Assets",
+      description: "View all clips, memes, and GIFs across all users with filtering",
+      icon: ImageIcon,
+      href: "/admin/assets",
+      color: "from-purple-500 to-pink-600",
     },
     {
       title: "Email Campaigns",
