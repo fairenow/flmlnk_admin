@@ -15,11 +15,16 @@ type EmailCallbackParams = {
 
 const siteUrl = process.env.SITE_URL!;
 const convexSiteUrl = process.env.CONVEX_SITE_URL;
+const adminSiteUrl = process.env.ADMIN_SITE_URL;
 
 // Build trusted origins list with the app URL and common variants
 const trustedOriginsList: string[] = [siteUrl];
 if (convexSiteUrl) {
   trustedOriginsList.push(convexSiteUrl);
+}
+// Include admin site URL for cross-subdomain auth
+if (adminSiteUrl) {
+  trustedOriginsList.push(adminSiteUrl);
 }
 // Include localhost variants for development
 if (process.env.NODE_ENV !== "production" || siteUrl.includes("localhost")) {
@@ -27,6 +32,9 @@ if (process.env.NODE_ENV !== "production" || siteUrl.includes("localhost")) {
 }
 
 export const authComponent = createClient<DataModel>(components.betterAuth);
+
+// Determine if we're in production (not localhost)
+const isProduction = !siteUrl.includes("localhost");
 
 export const createAuth = (
   ctx: GenericCtx<DataModel>,
@@ -39,6 +47,21 @@ export const createAuth = (
     baseURL: siteUrl,
     trustedOrigins: trustedOriginsList,
     database: authComponent.adapter(ctx),
+    // Session cookie configuration for cross-subdomain auth
+    session: {
+      cookieCache: {
+        enabled: true,
+      },
+      // In production, set cookie domain to .flmlnk.com for subdomain sharing
+      // This allows admin.flmlnk.com to read cookies set by flmlnk.com
+      ...(isProduction && {
+        cookie: {
+          domain: ".flmlnk.com",
+          secure: true,
+          sameSite: "lax" as const,
+        },
+      }),
+    },
     emailAndPassword: {
       enabled: true,
       requireEmailVerification: true,
