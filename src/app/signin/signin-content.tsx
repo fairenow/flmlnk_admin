@@ -41,8 +41,11 @@ export function SignInContent() {
     setIsPending(true);
 
     try {
-      // Determine the callback URL - use next param or default to dashboard
-      const callbackURL = next || "/dashboard";
+      // Build absolute callback URL pointing back to this site (admin portal)
+      // This ensures after OAuth on the main site, user is redirected back here
+      const origin = typeof window !== "undefined" ? window.location.origin : "";
+      const redirectPath = next || "/dashboard";
+      const callbackURL = `${origin}${redirectPath}`;
 
       await signIn.social({
         provider: "google",
