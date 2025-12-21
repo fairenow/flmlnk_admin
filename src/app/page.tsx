@@ -13,7 +13,7 @@ export default function AdminLandingPage() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      router.push("/dashboard/actor");
+      router.push("/dashboard");
     }
   }, [isAuthenticated, router]);
 
