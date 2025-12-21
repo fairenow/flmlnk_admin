@@ -3,12 +3,27 @@
 import { createAuthClient } from "better-auth/react";
 import { convexClient } from "@convex-dev/better-auth/client/plugins";
 
+// For cross-subdomain auth (e.g., admin.flmlnk.com using flmlnk.com as auth server),
+// use NEXT_PUBLIC_AUTH_URL to point to the main auth server.
+// Falls back to NEXT_PUBLIC_SITE_URL or current origin for single-domain setups.
+const getAuthBaseURL = () => {
+  // Prioritize explicit auth URL for cross-subdomain setups
+  if (process.env.NEXT_PUBLIC_AUTH_URL) {
+    return process.env.NEXT_PUBLIC_AUTH_URL;
+  }
+  // Fall back to site URL
+  if (process.env.NEXT_PUBLIC_SITE_URL) {
+    return process.env.NEXT_PUBLIC_SITE_URL;
+  }
+  // Last resort: current origin (only works for same-origin auth)
+  if (typeof window !== "undefined") {
+    return window.location.origin;
+  }
+  return undefined;
+};
+
 export const authClient = createAuthClient({
-  // Default to the current origin so client-side auth actions like signOut
-  // work even when NEXT_PUBLIC_SITE_URL isn't configured (e.g. local dev).
-  baseURL:
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    (typeof window !== "undefined" ? window.location.origin : undefined),
+  baseURL: getAuthBaseURL(),
   plugins: [convexClient()],
 });
 
