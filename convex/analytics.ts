@@ -1493,3 +1493,613 @@ export const getAllUsersAdmin = query({
     });
   },
 });
+
+// =============================================================================
+// ADMIN QUERIES - Deep Analytics Extended
+// =============================================================================
+
+/**
+ * Get comprehensive site-wide statistics for admin dashboard
+ */
+export const getSiteWideStatsAdmin = query({
+  args: {},
+  async handler(ctx) {
+    // Admin authorization check
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+
+    const currentUser = await ctx.db
+      .query("users")
+      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
+      .unique();
+
+    if (!currentUser?.superadmin) throw new Error("Admin access required");
+
+    const now = Date.now();
+    const today = now - 24 * 60 * 60 * 1000;
+    const thisWeek = now - 7 * 24 * 60 * 60 * 1000;
+    const thisMonth = now - 30 * 24 * 60 * 60 * 1000;
+
+    // Fetch all collections in parallel
+    const [users, profiles, fanEmails, events, projects, clips, bookingInquiries] = await Promise.all([
+      ctx.db.query("users").collect(),
+      ctx.db.query("actor_profiles").collect(),
+      ctx.db.query("fan_emails").collect(),
+      ctx.db.query("analytics_events").collect(),
+      ctx.db.query("projects").collect(),
+      ctx.db.query("clips").collect(),
+      ctx.db.query("booking_inquiries").collect(),
+    ]);
+
+    // User stats
+    const usersToday = users.filter((u) => u._creationTime >= today).length;
+    const usersThisWeek = users.filter((u) => u._creationTime >= thisWeek).length;
+    const usersThisMonth = users.filter((u) => u._creationTime >= thisMonth).length;
+
+    // Profile stats
+    const profilesToday = profiles.filter((p) => p._creationTime >= today).length;
+    const profilesThisWeek = profiles.filter((p) => p._creationTime >= thisWeek).length;
+    const profilesThisMonth = profiles.filter((p) => p._creationTime >= thisMonth).length;
+
+    // Fan email stats
+    const activeEmails = fanEmails.filter((e) => !e.unsubscribed);
+    const unsubscribedEmails = fanEmails.filter((e) => e.unsubscribed);
+    const fanEmailsToday = fanEmails.filter((e) => (e.createdAt ?? e._creationTime) >= today).length;
+    const fanEmailsThisWeek = fanEmails.filter((e) => (e.createdAt ?? e._creationTime) >= thisWeek).length;
+    const fanEmailsThisMonth = fanEmails.filter((e) => (e.createdAt ?? e._creationTime) >= thisMonth).length;
+
+    // Event stats
+    const eventsToday = events.filter((e) => e._creationTime >= today).length;
+    const eventsThisWeek = events.filter((e) => e._creationTime >= thisWeek).length;
+    const eventsThisMonth = events.filter((e) => e._creationTime >= thisMonth).length;
+
+    // Calculate active accounts (users with at least one event in last 30 days)
+    const activeUserIds = new Set<string>();
+    for (const event of events) {
+      if (event._creationTime >= thisMonth && event.actorProfileId) {
+        const profile = profiles.find((p) => p._id === event.actorProfileId);
+        if (profile) {
+          activeUserIds.add(profile.userId.toString());
+        }
+      }
+    }
+
+    // Email engagement stats
+    let totalOpened = 0;
+    let totalClicked = 0;
+    let totalSent = 0;
+    for (const email of fanEmails) {
+      if (email.emailsSentCount) totalSent += email.emailsSentCount;
+      if (email.emailsOpenedCount) totalOpened += email.emailsOpenedCount;
+      if (email.emailsClickedCount) totalClicked += email.emailsClickedCount;
+    }
+
+    // Booking inquiry stats
+    const inquiriesToday = bookingInquiries.filter((b) => b.createdAt >= today).length;
+    const inquiriesThisWeek = bookingInquiries.filter((b) => b.createdAt >= thisWeek).length;
+    const inquiriesThisMonth = bookingInquiries.filter((b) => b.createdAt >= thisMonth).length;
+
+    return {
+      users: {
+        total: users.length,
+        today: usersToday,
+        thisWeek: usersThisWeek,
+        thisMonth: usersThisMonth,
+        activeAccounts: activeUserIds.size,
+      },
+      profiles: {
+        total: profiles.length,
+        today: profilesToday,
+        thisWeek: profilesThisWeek,
+        thisMonth: profilesThisMonth,
+      },
+      fanEmails: {
+        total: fanEmails.length,
+        active: activeEmails.length,
+        unsubscribed: unsubscribedEmails.length,
+        today: fanEmailsToday,
+        thisWeek: fanEmailsThisWeek,
+        thisMonth: fanEmailsThisMonth,
+        engagement: {
+          totalSent,
+          totalOpened,
+          totalClicked,
+          openRate: totalSent > 0 ? Math.round((totalOpened / totalSent) * 100) : 0,
+          clickRate: totalSent > 0 ? Math.round((totalClicked / totalSent) * 100) : 0,
+        },
+      },
+      events: {
+        total: events.length,
+        today: eventsToday,
+        thisWeek: eventsThisWeek,
+        thisMonth: eventsThisMonth,
+      },
+      content: {
+        projects: projects.length,
+        clips: clips.length,
+        projectsWithTrailer: projects.filter((p) => p.trailerUrl).length,
+      },
+      bookingInquiries: {
+        total: bookingInquiries.length,
+        today: inquiriesToday,
+        thisWeek: inquiriesThisWeek,
+        thisMonth: inquiriesThisMonth,
+      },
+    };
+  },
+});
+
+/**
+ * Get detailed fan email analytics for admin dashboard
+ */
+export const getFanEmailAnalyticsAdmin = query({
+  args: {
+    daysBack: v.optional(v.number()),
+    profileId: v.optional(v.id("actor_profiles")),
+  },
+  async handler(ctx, args) {
+    // Admin authorization check
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+
+    const currentUser = await ctx.db
+      .query("users")
+      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
+      .unique();
+
+    if (!currentUser?.superadmin) throw new Error("Admin access required");
+
+    const daysBack = args.daysBack ?? 30;
+    const cutoffTime = Date.now() - daysBack * 24 * 60 * 60 * 1000;
+
+    // Get fan emails
+    let fanEmails = args.profileId
+      ? await ctx.db
+          .query("fan_emails")
+          .withIndex("by_actorProfile", (q) => q.eq("actorProfileId", args.profileId!))
+          .collect()
+      : await ctx.db.query("fan_emails").collect();
+
+    // Get profiles for enrichment
+    const profiles = await ctx.db.query("actor_profiles").collect();
+    const profileMap = new Map(profiles.map((p) => [p._id.toString(), p]));
+
+    // Count by source
+    const sourceBreakdown: Record<string, number> = {};
+    for (const email of fanEmails) {
+      const source = email.source ?? "unknown";
+      sourceBreakdown[source] = (sourceBreakdown[source] ?? 0) + 1;
+    }
+
+    // Count by profile
+    const byProfile: { profileId: string; profileName: string; slug: string; count: number; active: number; unsubscribed: number }[] = [];
+    const profileCounts = new Map<string, { total: number; active: number; unsubscribed: number }>();
+
+    for (const email of fanEmails) {
+      const key = email.actorProfileId.toString();
+      const current = profileCounts.get(key) ?? { total: 0, active: 0, unsubscribed: 0 };
+      current.total++;
+      if (email.unsubscribed) {
+        current.unsubscribed++;
+      } else {
+        current.active++;
+      }
+      profileCounts.set(key, current);
+    }
+
+    for (const [profileId, counts] of profileCounts) {
+      const profile = profileMap.get(profileId);
+      if (profile) {
+        byProfile.push({
+          profileId,
+          profileName: profile.displayName,
+          slug: profile.slug,
+          count: counts.total,
+          active: counts.active,
+          unsubscribed: counts.unsubscribed,
+        });
+      }
+    }
+
+    // Sort by count descending
+    byProfile.sort((a, b) => b.count - a.count);
+
+    // Recent signups (within time range)
+    const recentEmails = fanEmails.filter((e) => (e.createdAt ?? e._creationTime) >= cutoffTime);
+
+    // Daily breakdown for chart
+    const dailyCounts: { date: string; count: number }[] = [];
+    const dateMap = new Map<string, number>();
+
+    for (const email of recentEmails) {
+      const date = new Date(email.createdAt ?? email._creationTime).toISOString().split("T")[0];
+      dateMap.set(date, (dateMap.get(date) ?? 0) + 1);
+    }
+
+    // Fill in missing dates
+    for (let i = 0; i < daysBack; i++) {
+      const date = new Date(Date.now() - i * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+      dailyCounts.push({
+        date,
+        count: dateMap.get(date) ?? 0,
+      });
+    }
+
+    dailyCounts.reverse();
+
+    return {
+      period: `${daysBack} days`,
+      totals: {
+        total: fanEmails.length,
+        active: fanEmails.filter((e) => !e.unsubscribed).length,
+        unsubscribed: fanEmails.filter((e) => e.unsubscribed).length,
+        recentSignups: recentEmails.length,
+      },
+      sourceBreakdown,
+      byProfile: byProfile.slice(0, 20), // Top 20 profiles
+      dailyTrend: dailyCounts,
+    };
+  },
+});
+
+/**
+ * Get event types breakdown for admin dashboard
+ */
+export const getEventTypesBreakdownAdmin = query({
+  args: {
+    daysBack: v.optional(v.number()),
+  },
+  async handler(ctx, args) {
+    // Admin authorization check
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+
+    const currentUser = await ctx.db
+      .query("users")
+      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
+      .unique();
+
+    if (!currentUser?.superadmin) throw new Error("Admin access required");
+
+    const daysBack = args.daysBack ?? 30;
+    const cutoffTime = Date.now() - daysBack * 24 * 60 * 60 * 1000;
+
+    const events = await ctx.db.query("analytics_events").collect();
+    const recentEvents = events.filter((e) => e._creationTime >= cutoffTime);
+
+    // Count by event type
+    const eventTypeCounts: Record<string, number> = {};
+    for (const event of recentEvents) {
+      eventTypeCounts[event.eventType] = (eventTypeCounts[event.eventType] ?? 0) + 1;
+    }
+
+    // Convert to array for charting
+    const breakdown = Object.entries(eventTypeCounts)
+      .map(([type, count]) => ({ type, count }))
+      .sort((a, b) => b.count - a.count);
+
+    return {
+      period: `${daysBack} days`,
+      total: recentEvents.length,
+      breakdown,
+    };
+  },
+});
+
+/**
+ * Get daily trends for charts (page views, clip plays, email captures, etc.)
+ */
+export const getDailyTrendsAdmin = query({
+  args: {
+    daysBack: v.optional(v.number()),
+    eventTypes: v.optional(v.array(v.string())),
+  },
+  async handler(ctx, args) {
+    // Admin authorization check
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+
+    const currentUser = await ctx.db
+      .query("users")
+      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
+      .unique();
+
+    if (!currentUser?.superadmin) throw new Error("Admin access required");
+
+    const daysBack = args.daysBack ?? 30;
+    const cutoffTime = Date.now() - daysBack * 24 * 60 * 60 * 1000;
+    const eventTypes = args.eventTypes ?? ["page_view", "clip_played", "email_captured", "inquiry_submitted"];
+
+    const events = await ctx.db.query("analytics_events").collect();
+    const recentEvents = events.filter((e) => e._creationTime >= cutoffTime);
+
+    // Build daily data
+    type DailyData = {
+      date: string;
+      [key: string]: string | number;
+    };
+
+    const dailyData: Map<string, DailyData> = new Map();
+
+    // Initialize all dates
+    for (let i = 0; i < daysBack; i++) {
+      const date = new Date(Date.now() - i * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+      const data: DailyData = { date };
+      for (const type of eventTypes) {
+        data[type] = 0;
+      }
+      dailyData.set(date, data);
+    }
+
+    // Count events by day and type
+    for (const event of recentEvents) {
+      const date = new Date(event._creationTime).toISOString().split("T")[0];
+      const data = dailyData.get(date);
+      if (data && eventTypes.includes(event.eventType)) {
+        (data[event.eventType] as number)++;
+      }
+    }
+
+    // Convert to array and sort by date
+    const trends = Array.from(dailyData.values()).sort((a, b) => a.date.localeCompare(b.date));
+
+    return {
+      period: `${daysBack} days`,
+      eventTypes,
+      trends,
+    };
+  },
+});
+
+/**
+ * Get user engagement levels (categorized by activity)
+ */
+export const getUserEngagementLevelsAdmin = query({
+  args: {
+    daysBack: v.optional(v.number()),
+  },
+  async handler(ctx, args) {
+    // Admin authorization check
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+
+    const currentUser = await ctx.db
+      .query("users")
+      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
+      .unique();
+
+    if (!currentUser?.superadmin) throw new Error("Admin access required");
+
+    const daysBack = args.daysBack ?? 30;
+    const cutoffTime = Date.now() - daysBack * 24 * 60 * 60 * 1000;
+
+    const [profiles, events, fanEmails, projects] = await Promise.all([
+      ctx.db.query("actor_profiles").collect(),
+      ctx.db.query("analytics_events").collect(),
+      ctx.db.query("fan_emails").collect(),
+      ctx.db.query("projects").collect(),
+    ]);
+
+    const recentEvents = events.filter((e) => e._creationTime >= cutoffTime);
+
+    // Calculate engagement score for each profile
+    type ProfileEngagement = {
+      profileId: string;
+      displayName: string;
+      slug: string;
+      pageViews: number;
+      clipPlays: number;
+      emailCaptures: number;
+      inquiries: number;
+      totalFanEmails: number;
+      projectCount: number;
+      engagementScore: number;
+      engagementLevel: "high" | "medium" | "low" | "inactive";
+    };
+
+    const profileEngagement: ProfileEngagement[] = [];
+
+    for (const profile of profiles) {
+      const profileEvents = recentEvents.filter(
+        (e) => e.actorProfileId?.toString() === profile._id.toString()
+      );
+
+      const pageViews = profileEvents.filter((e) => e.eventType === "page_view").length;
+      const clipPlays = profileEvents.filter((e) => e.eventType === "clip_played").length;
+      const emailCaptures = profileEvents.filter((e) => e.eventType === "email_captured").length;
+      const inquiries = profileEvents.filter((e) => e.eventType === "inquiry_submitted").length;
+      const totalFanEmails = fanEmails.filter(
+        (e) => e.actorProfileId.toString() === profile._id.toString()
+      ).length;
+      const projectCount = projects.filter(
+        (p) => p.actorProfileId.toString() === profile._id.toString()
+      ).length;
+
+      // Calculate engagement score (weighted)
+      const engagementScore =
+        pageViews * 1 +
+        clipPlays * 2 +
+        emailCaptures * 5 +
+        inquiries * 10 +
+        totalFanEmails * 3;
+
+      let engagementLevel: "high" | "medium" | "low" | "inactive";
+      if (engagementScore >= 100) {
+        engagementLevel = "high";
+      } else if (engagementScore >= 20) {
+        engagementLevel = "medium";
+      } else if (engagementScore > 0) {
+        engagementLevel = "low";
+      } else {
+        engagementLevel = "inactive";
+      }
+
+      profileEngagement.push({
+        profileId: profile._id,
+        displayName: profile.displayName,
+        slug: profile.slug,
+        pageViews,
+        clipPlays,
+        emailCaptures,
+        inquiries,
+        totalFanEmails,
+        projectCount,
+        engagementScore,
+        engagementLevel,
+      });
+    }
+
+    // Sort by engagement score
+    profileEngagement.sort((a, b) => b.engagementScore - a.engagementScore);
+
+    // Count by engagement level
+    const levelCounts = {
+      high: profileEngagement.filter((p) => p.engagementLevel === "high").length,
+      medium: profileEngagement.filter((p) => p.engagementLevel === "medium").length,
+      low: profileEngagement.filter((p) => p.engagementLevel === "low").length,
+      inactive: profileEngagement.filter((p) => p.engagementLevel === "inactive").length,
+    };
+
+    return {
+      period: `${daysBack} days`,
+      levelCounts,
+      topEngaged: profileEngagement.slice(0, 10),
+      allProfiles: profileEngagement,
+    };
+  },
+});
+
+/**
+ * Get page-by-page analytics for each profile
+ */
+export const getPageByPageAnalyticsAdmin = query({
+  args: {
+    daysBack: v.optional(v.number()),
+    limit: v.optional(v.number()),
+  },
+  async handler(ctx, args) {
+    // Admin authorization check
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+
+    const currentUser = await ctx.db
+      .query("users")
+      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
+      .unique();
+
+    if (!currentUser?.superadmin) throw new Error("Admin access required");
+
+    const daysBack = args.daysBack ?? 30;
+    const limit = args.limit ?? 50;
+    const cutoffTime = Date.now() - daysBack * 24 * 60 * 60 * 1000;
+
+    const [profiles, events, fanEmails, projects, clips, users] = await Promise.all([
+      ctx.db.query("actor_profiles").collect(),
+      ctx.db.query("analytics_events").collect(),
+      ctx.db.query("fan_emails").collect(),
+      ctx.db.query("projects").collect(),
+      ctx.db.query("clips").collect(),
+      ctx.db.query("users").collect(),
+    ]);
+
+    const recentEvents = events.filter((e) => e._creationTime >= cutoffTime);
+    const userMap = new Map(users.map((u) => [u._id.toString(), u]));
+
+    type PageAnalytics = {
+      profileId: string;
+      displayName: string;
+      slug: string;
+      location: string | undefined;
+      ownerName: string | undefined;
+      ownerEmail: string | undefined;
+      pageViews: number;
+      uniqueVisitors: number;
+      clipPlays: number;
+      clipShares: number;
+      emailCaptures: number;
+      inquiries: number;
+      socialClicks: number;
+      totalFanEmails: number;
+      activeFanEmails: number;
+      projectCount: number;
+      clipCount: number;
+      conversionRate: number;
+    };
+
+    const pageAnalytics: PageAnalytics[] = [];
+
+    for (const profile of profiles) {
+      const profileEvents = recentEvents.filter(
+        (e) => e.actorProfileId?.toString() === profile._id.toString()
+      );
+
+      const pageViews = profileEvents.filter((e) => e.eventType === "page_view").length;
+      const uniqueVisitors = new Set(
+        profileEvents.filter((e) => e.eventType === "page_view").map((e) => e.sessionId)
+      ).size;
+      const clipPlays = profileEvents.filter((e) => e.eventType === "clip_played").length;
+      const clipShares = profileEvents.filter((e) => e.eventType === "clip_shared").length;
+      const emailCaptures = profileEvents.filter((e) => e.eventType === "email_captured").length;
+      const inquiries = profileEvents.filter((e) => e.eventType === "inquiry_submitted").length;
+      const socialClicks = profileEvents.filter((e) => e.eventType === "social_link_clicked").length;
+
+      const profileFanEmails = fanEmails.filter(
+        (e) => e.actorProfileId.toString() === profile._id.toString()
+      );
+      const totalFanEmails = profileFanEmails.length;
+      const activeFanEmails = profileFanEmails.filter((e) => !e.unsubscribed).length;
+
+      const projectCount = projects.filter(
+        (p) => p.actorProfileId.toString() === profile._id.toString()
+      ).length;
+      const clipCount = clips.filter(
+        (c) => c.actorProfileId.toString() === profile._id.toString()
+      ).length;
+
+      // Conversion rate: email captures / page views
+      const conversionRate = pageViews > 0 ? Math.round((emailCaptures / pageViews) * 1000) / 10 : 0;
+
+      const user = userMap.get(profile.userId.toString());
+
+      pageAnalytics.push({
+        profileId: profile._id,
+        displayName: profile.displayName,
+        slug: profile.slug,
+        location: profile.location,
+        ownerName: user?.name,
+        ownerEmail: user?.email,
+        pageViews,
+        uniqueVisitors,
+        clipPlays,
+        clipShares,
+        emailCaptures,
+        inquiries,
+        socialClicks,
+        totalFanEmails,
+        activeFanEmails,
+        projectCount,
+        clipCount,
+        conversionRate,
+      });
+    }
+
+    // Sort by page views descending
+    pageAnalytics.sort((a, b) => b.pageViews - a.pageViews);
+
+    // Calculate totals
+    const totals = {
+      pageViews: pageAnalytics.reduce((sum, p) => sum + p.pageViews, 0),
+      uniqueVisitors: pageAnalytics.reduce((sum, p) => sum + p.uniqueVisitors, 0),
+      clipPlays: pageAnalytics.reduce((sum, p) => sum + p.clipPlays, 0),
+      emailCaptures: pageAnalytics.reduce((sum, p) => sum + p.emailCaptures, 0),
+      inquiries: pageAnalytics.reduce((sum, p) => sum + p.inquiries, 0),
+      totalFanEmails: pageAnalytics.reduce((sum, p) => sum + p.totalFanEmails, 0),
+    };
+
+    return {
+      period: `${daysBack} days`,
+      totals,
+      pages: pageAnalytics.slice(0, limit),
+    };
+  },
+});
