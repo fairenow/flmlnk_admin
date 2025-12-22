@@ -233,22 +233,6 @@ export const createCampaign = mutation({
           .collect();
         estimatedRecipientCount = allSubscribers.filter((s) => !s.unsubscribed).length;
       }
-    } else if (args.audienceType === "all_filmmakers") {
-      // Count users who have actor profiles (filmmakers)
-      const users = await ctx.db.query("users").collect();
-      for (const user of users) {
-        const hasProfile = await ctx.db
-          .query("actor_profiles")
-          .withIndex("by_user", (q) => q.eq("userId", user._id))
-          .first();
-        if (hasProfile && user.email) {
-          estimatedRecipientCount++;
-        }
-      }
-    } else if (args.audienceType === "incomplete_onboarding") {
-      // For incomplete_onboarding, count will be shown from the audience query
-      // Set to 0 for now - the UI shows the actual count from getIncompleteOnboardingCount
-      estimatedRecipientCount = 0;
     }
 
     const now = Date.now();
@@ -833,46 +817,6 @@ export const getCampaignRecipients = internalQuery({
     audienceTags: v.optional(v.array(v.string())),
   },
   async handler(ctx, { actorProfileId, audienceType }) {
-    // Handle "all_filmmakers" audience type - pulls from users table
-    if (audienceType === "all_filmmakers") {
-      const users = await ctx.db.query("users").collect();
-
-      // Filter to users who have created actor profiles (i.e., filmmakers)
-      const filmmakerUsers = [];
-      for (const user of users) {
-        const hasProfile = await ctx.db
-          .query("actor_profiles")
-          .withIndex("by_user", (q) => q.eq("userId", user._id))
-          .first();
-        if (hasProfile && user.email) {
-          filmmakerUsers.push(user);
-        }
-      }
-
-      return filmmakerUsers.map((u) => ({
-        fanEmailId: null as unknown as Id<"fan_emails">,
-        email: u.email,
-        name: u.name || u.displayName,
-        unsubscribeToken: undefined,
-      }));
-    }
-
-    // Handle "incomplete_onboarding" audience type - users who signed up but didn't complete onboarding
-    if (audienceType === "incomplete_onboarding") {
-      // Get incomplete onboarding recipients from admin-specific query
-      const incompleteUsers = await ctx.runQuery(
-        internal.adminCampaigns.getIncompleteOnboardingRecipients,
-        {}
-      );
-
-      return incompleteUsers.map((u) => ({
-        fanEmailId: null as unknown as Id<"fan_emails">,
-        email: u.email,
-        name: u.name,
-        unsubscribeToken: undefined,
-      }));
-    }
-
     let subscribers: Doc<"fan_emails">[] = [];
 
     if (audienceType === "creator_subscribers") {
