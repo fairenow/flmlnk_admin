@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query, internalMutation } from "./_generated/server";
 import { Doc, Id } from "./_generated/dataModel";
+import { internal, components } from "./_generated/api";
 
 // ============================================
 // AUDIENCE TAG QUERIES
@@ -110,6 +111,65 @@ export const getSiteWideAudienceCount = query({
       active: active.length,
       unsubscribed: unsubscribed.length,
     };
+  },
+});
+
+/**
+ * Get count of users with incomplete onboarding (signed up but didn't complete)
+ */
+export const getIncompleteOnboardingCount = query({
+  args: {},
+  async handler(ctx) {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return null;
+    }
+
+    // Check if user is superadmin
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
+      .first();
+
+    if (!user?.superadmin) {
+      return null; // Only superadmins can see this audience
+    }
+
+    // Get all betterAuth users
+    const authUsersResult = await ctx.runQuery(components.betterAuth.adapter.findMany, {
+      model: "user",
+      paginationOpts: {
+        cursor: null,
+        numItems: 10000,
+      },
+    });
+
+    const authUsers = authUsersResult.page || [];
+
+    // Get all application users
+    const appUsers = await ctx.db.query("users").collect();
+
+    // Get all actor profiles
+    const actorProfiles = await ctx.db.query("actor_profiles").collect();
+    const userIdsWithProfiles = new Set(
+      actorProfiles.map((p) => p.userId.toString())
+    );
+
+    // Count users who either:
+    // 1. Don't have a corresponding app user entry, OR
+    // 2. Have an app user entry but no actor profile
+    let count = 0;
+    for (const authUser of authUsers) {
+      if (!authUser.email) continue;
+
+      const appUser = appUsers.find((u) => u.authId === authUser._id);
+
+      if (!appUser || !userIdsWithProfiles.has(appUser._id.toString())) {
+        count++;
+      }
+    }
+
+    return { count };
   },
 });
 
