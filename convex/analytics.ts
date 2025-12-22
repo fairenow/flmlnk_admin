@@ -11,8 +11,63 @@ import { Id } from "./_generated/dataModel";
 
 /**
  * Event types that can be logged to the analytics_events table.
+ *
+ * Core Events (existing):
+ * - page_view: User visited the public page
+ * - clip_played: User played a clip/video
+ * - clip_shared: User shared a clip
+ * - email_captured: User submitted email via modal
+ * - inquiry_submitted: User submitted a booking inquiry
+ * - comment_submitted: User submitted a comment
+ * - user_signup: New user registered
+ * - profile_created: User created an actor profile
+ * - onboarding_completed: User completed onboarding
+ *
+ * Granular CTA Events:
+ * - watch_cta_clicked: User clicked the Watch CTA button in hero
+ * - get_updates_clicked: User clicked Get Updates button
+ * - social_link_clicked: User clicked a social media link
+ * - share_button_clicked: User clicked the share button
+ *
+ * Navigation Events:
+ * - tab_changed: User changed tabs on the page
+ * - filmography_item_clicked: User clicked a film in filmography
+ * - project_selected: User selected a project to view trailer
+ *
+ * Video Engagement Events:
+ * - video_play: User started playing video
+ * - video_pause: User paused video
+ * - video_mute_toggle: User toggled mute
+ * - video_fullscreen: User entered fullscreen
+ * - video_progress_25: User watched 25% of video
+ * - video_progress_50: User watched 50% of video
+ * - video_progress_75: User watched 75% of video
+ * - video_completed: User watched video to completion
+ *
+ * Gallery Events:
+ * - generated_clip_viewed: User viewed a generated clip
+ * - generated_clip_played: User played a generated clip
+ * - processing_clip_viewed: User viewed an uploaded clip
+ * - processing_clip_played: User played an uploaded clip
+ *
+ * Engagement Events:
+ * - scroll_depth_25: User scrolled 25% of page
+ * - scroll_depth_50: User scrolled 50% of page
+ * - scroll_depth_75: User scrolled 75% of page
+ * - scroll_depth_100: User scrolled to bottom
+ * - time_on_page_30s: User spent 30 seconds on page
+ * - time_on_page_60s: User spent 60 seconds on page
+ * - time_on_page_180s: User spent 3 minutes on page
+ *
+ * Deep Analytics Events (for future module):
+ * - asset_impression: Asset was viewed/displayed
+ * - asset_engagement: User engaged with asset (click, play, etc.)
+ * - social_share_intent: User initiated social share
+ * - social_share_completed: User completed social share
+ * - outbound_link_clicked: User clicked external link
  */
 export type EventType =
+  // Core events
   | "page_view"
   | "clip_played"
   | "clip_shared"
@@ -22,7 +77,81 @@ export type EventType =
   | "user_signup"
   | "profile_created"
   | "onboarding_completed"
-  | "social_link_clicked";
+  // Granular CTA events
+  | "watch_cta_clicked"
+  | "get_updates_clicked"
+  | "social_link_clicked"
+  | "share_button_clicked"
+  // Navigation events
+  | "tab_changed"
+  | "filmography_item_clicked"
+  | "project_selected"
+  // Video engagement events
+  | "video_play"
+  | "video_pause"
+  | "video_mute_toggle"
+  | "video_fullscreen"
+  | "video_progress_25"
+  | "video_progress_50"
+  | "video_progress_75"
+  | "video_completed"
+  // Gallery events
+  | "generated_clip_viewed"
+  | "generated_clip_played"
+  | "processing_clip_viewed"
+  | "processing_clip_played"
+  // Engagement events
+  | "scroll_depth_25"
+  | "scroll_depth_50"
+  | "scroll_depth_75"
+  | "scroll_depth_100"
+  | "time_on_page_30s"
+  | "time_on_page_60s"
+  | "time_on_page_180s"
+  // Deep Analytics events
+  | "asset_impression"
+  | "asset_engagement"
+  | "social_share_intent"
+  | "social_share_completed"
+  | "outbound_link_clicked";
+
+/**
+ * Event metadata schema for granular tracking.
+ */
+const eventMetadataSchema = v.optional(v.object({
+  // CTA tracking
+  ctaLabel: v.optional(v.string()),
+  ctaUrl: v.optional(v.string()),
+  ctaPosition: v.optional(v.string()),
+  // Social tracking
+  socialPlatform: v.optional(v.string()),
+  socialAction: v.optional(v.string()),
+  // Video tracking
+  videoProgress: v.optional(v.number()),
+  videoDuration: v.optional(v.number()),
+  videoCurrentTime: v.optional(v.number()),
+  // Navigation tracking
+  tabName: v.optional(v.string()),
+  previousTab: v.optional(v.string()),
+  // Asset tracking
+  assetId: v.optional(v.string()),
+  assetType: v.optional(v.string()),
+  assetTitle: v.optional(v.string()),
+  // Project tracking
+  projectId: v.optional(v.string()),
+  projectTitle: v.optional(v.string()),
+  // Scroll tracking
+  scrollDepth: v.optional(v.number()),
+  // Time tracking
+  timeOnPage: v.optional(v.number()),
+  // Device info
+  deviceType: v.optional(v.string()),
+  screenWidth: v.optional(v.number()),
+  screenHeight: v.optional(v.number()),
+  // Outbound links
+  outboundUrl: v.optional(v.string()),
+  outboundLabel: v.optional(v.string()),
+}));
 
 /**
  * Log an analytics event.
@@ -37,6 +166,7 @@ export const logEvent = mutation({
     sessionId: v.string(),
     userAgent: v.optional(v.string()),
     referrer: v.optional(v.string()),
+    metadata: eventMetadataSchema,
   },
   async handler(ctx, args) {
     await ctx.db.insert("analytics_events", {
@@ -47,6 +177,7 @@ export const logEvent = mutation({
       sessionId: args.sessionId,
       userAgent: args.userAgent,
       referrer: args.referrer,
+      metadata: args.metadata,
     });
     return { ok: true };
   },
@@ -191,15 +322,62 @@ export const getOverview = query({
       counts[event.eventType] = (counts[event.eventType] ?? 0) + 1;
     }
 
+    // Count unique sessions
+    const uniqueSessions = new Set(recentEvents.map(e => e.sessionId));
+
     return {
       period: `${daysBack} days`,
       totalEvents: recentEvents.length,
+      uniqueVisitors: uniqueSessions.size,
+      // Core metrics
       pageViews: counts["page_view"] ?? 0,
       clipPlays: counts["clip_played"] ?? 0,
       clipShares: counts["clip_shared"] ?? 0,
       emailCaptures: counts["email_captured"] ?? 0,
       inquiries: counts["inquiry_submitted"] ?? 0,
       comments: counts["comment_submitted"] ?? 0,
+      // Granular CTA metrics
+      ctaMetrics: {
+        watchCtaClicks: counts["watch_cta_clicked"] ?? 0,
+        getUpdatesClicks: counts["get_updates_clicked"] ?? 0,
+        shareButtonClicks: counts["share_button_clicked"] ?? 0,
+        socialLinkClicks: counts["social_link_clicked"] ?? 0,
+        outboundLinkClicks: counts["outbound_link_clicked"] ?? 0,
+      },
+      // Video engagement
+      videoEngagement: {
+        plays: counts["video_play"] ?? 0,
+        pauses: counts["video_pause"] ?? 0,
+        muteToggles: counts["video_mute_toggle"] ?? 0,
+        fullscreenEnters: counts["video_fullscreen"] ?? 0,
+        progress25: counts["video_progress_25"] ?? 0,
+        progress50: counts["video_progress_50"] ?? 0,
+        progress75: counts["video_progress_75"] ?? 0,
+        completed: counts["video_completed"] ?? 0,
+      },
+      // Tab engagement
+      tabEngagement: {
+        tabChanges: counts["tab_changed"] ?? 0,
+        projectSelections: counts["project_selected"] ?? 0,
+        filmographyClicks: counts["filmography_item_clicked"] ?? 0,
+      },
+      // Gallery metrics
+      galleryMetrics: {
+        generatedClipViews: counts["generated_clip_viewed"] ?? 0,
+        generatedClipPlays: counts["generated_clip_played"] ?? 0,
+        processingClipViews: counts["processing_clip_viewed"] ?? 0,
+        processingClipPlays: counts["processing_clip_played"] ?? 0,
+      },
+      // Engagement depth
+      engagementDepth: {
+        scrollDepth25: counts["scroll_depth_25"] ?? 0,
+        scrollDepth50: counts["scroll_depth_50"] ?? 0,
+        scrollDepth75: counts["scroll_depth_75"] ?? 0,
+        scrollDepth100: counts["scroll_depth_100"] ?? 0,
+        timeOnPage30s: counts["time_on_page_30s"] ?? 0,
+        timeOnPage60s: counts["time_on_page_60s"] ?? 0,
+        timeOnPage180s: counts["time_on_page_180s"] ?? 0,
+      },
     };
   },
 });
@@ -272,6 +450,138 @@ export const getTopClips = query({
   },
 });
 
+/**
+ * Get analytics broken down by project for an actor profile.
+ * Shows CTA clicks, video plays, and engagement per project.
+ */
+export const getProjectAnalytics = query({
+  args: {
+    actorProfileId: v.id("actor_profiles"),
+    daysBack: v.optional(v.number()),
+  },
+  async handler(ctx, args) {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return null;
+    }
+
+    // Verify the user owns this profile
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
+      .unique();
+
+    if (!user) {
+      return null;
+    }
+
+    const profile = await ctx.db.get(args.actorProfileId);
+    if (!profile || profile.userId !== user._id) {
+      return null;
+    }
+
+    // Get all projects for this profile
+    const projects = await ctx.db
+      .query("projects")
+      .withIndex("by_actorProfile", (q) => q.eq("actorProfileId", args.actorProfileId))
+      .collect();
+
+    // Get all events for this profile
+    const daysBack = args.daysBack ?? 30;
+    const cutoffTime = Date.now() - daysBack * 24 * 60 * 60 * 1000;
+
+    const allEvents = await ctx.db
+      .query("analytics_events")
+      .withIndex("by_actorProfile", (q) => q.eq("actorProfileId", args.actorProfileId))
+      .collect();
+
+    const recentEvents = allEvents.filter((e) => e._creationTime >= cutoffTime);
+
+    // Aggregate events by project
+    const projectMetrics = new Map<string, {
+      projectId: string;
+      title: string;
+      watchCtaClicks: number;
+      getUpdatesClicks: number;
+      shareClicks: number;
+      videoPlays: number;
+      videoPauses: number;
+      fullscreenEnters: number;
+      totalEngagements: number;
+    }>();
+
+    // Initialize with all projects
+    for (const project of projects) {
+      projectMetrics.set(project._id, {
+        projectId: project._id,
+        title: project.title,
+        watchCtaClicks: 0,
+        getUpdatesClicks: 0,
+        shareClicks: 0,
+        videoPlays: 0,
+        videoPauses: 0,
+        fullscreenEnters: 0,
+        totalEngagements: 0,
+      });
+    }
+
+    // Count events by project
+    for (const event of recentEvents) {
+      // Get projectId from event or metadata
+      let eventProjectId = event.projectId as string | undefined;
+
+      // Also check metadata for projectId (for events tracked with project context)
+      const metadata = event.metadata as Record<string, any> | undefined;
+      if (!eventProjectId && metadata?.projectId) {
+        eventProjectId = metadata.projectId;
+      }
+
+      if (!eventProjectId) continue;
+
+      const metrics = projectMetrics.get(eventProjectId);
+      if (!metrics) continue;
+
+      switch (event.eventType) {
+        case "watch_cta_clicked":
+          metrics.watchCtaClicks++;
+          metrics.totalEngagements++;
+          break;
+        case "get_updates_clicked":
+          metrics.getUpdatesClicks++;
+          metrics.totalEngagements++;
+          break;
+        case "share_button_clicked":
+          metrics.shareClicks++;
+          metrics.totalEngagements++;
+          break;
+        case "video_play":
+          metrics.videoPlays++;
+          metrics.totalEngagements++;
+          break;
+        case "video_pause":
+          metrics.videoPauses++;
+          break;
+        case "video_fullscreen":
+          metrics.fullscreenEnters++;
+          metrics.totalEngagements++;
+          break;
+      }
+
+      projectMetrics.set(eventProjectId, metrics);
+    }
+
+    // Convert to array and sort by total engagements
+    const projectAnalytics = Array.from(projectMetrics.values())
+      .sort((a, b) => b.totalEngagements - a.totalEngagements);
+
+    return {
+      period: `${daysBack} days`,
+      projects: projectAnalytics,
+      totalProjects: projects.length,
+    };
+  },
+});
+
 // =============================================================================
 // SNAPSHOT MANAGEMENT
 // =============================================================================
@@ -296,6 +606,55 @@ export const upsertSnapshot = internalMutation({
     inquiries: v.number(),
     socialClicks: v.optional(v.number()),
     watchCtaClicks: v.optional(v.number()),
+    // Granular CTA metrics
+    ctaMetrics: v.optional(v.object({
+      watchCtaClicks: v.optional(v.number()),
+      getUpdatesClicks: v.optional(v.number()),
+      shareButtonClicks: v.optional(v.number()),
+      outboundLinkClicks: v.optional(v.number()),
+    })),
+    // Social engagement breakdown
+    socialEngagement: v.optional(v.object({
+      instagramClicks: v.optional(v.number()),
+      facebookClicks: v.optional(v.number()),
+      youtubeClicks: v.optional(v.number()),
+      tiktokClicks: v.optional(v.number()),
+      imdbClicks: v.optional(v.number()),
+      websiteClicks: v.optional(v.number()),
+    })),
+    // Video engagement metrics
+    videoEngagement: v.optional(v.object({
+      totalPlays: v.optional(v.number()),
+      uniquePlays: v.optional(v.number()),
+      avgWatchTime: v.optional(v.number()),
+      completionRate: v.optional(v.number()),
+      progress25: v.optional(v.number()),
+      progress50: v.optional(v.number()),
+      progress75: v.optional(v.number()),
+      progress100: v.optional(v.number()),
+    })),
+    // Tab navigation metrics
+    tabEngagement: v.optional(v.object({
+      aboutViews: v.optional(v.number()),
+      commentsViews: v.optional(v.number()),
+      filmsViews: v.optional(v.number()),
+      clipsViews: v.optional(v.number()),
+      contactViews: v.optional(v.number()),
+    })),
+    // Scroll depth metrics
+    scrollDepth: v.optional(v.object({
+      reached25: v.optional(v.number()),
+      reached50: v.optional(v.number()),
+      reached75: v.optional(v.number()),
+      reached100: v.optional(v.number()),
+    })),
+    // Time on page metrics
+    timeOnPage: v.optional(v.object({
+      avg: v.optional(v.number()),
+      reached30s: v.optional(v.number()),
+      reached60s: v.optional(v.number()),
+      reached180s: v.optional(v.number()),
+    })),
     trafficSources: v.optional(
       v.object({
         direct: v.number(),
@@ -346,6 +705,12 @@ export const upsertSnapshot = internalMutation({
       inquiries: args.inquiries,
       socialClicks: args.socialClicks,
       watchCtaClicks: args.watchCtaClicks,
+      ctaMetrics: args.ctaMetrics,
+      socialEngagement: args.socialEngagement,
+      videoEngagement: args.videoEngagement,
+      tabEngagement: args.tabEngagement,
+      scrollDepth: args.scrollDepth,
+      timeOnPage: args.timeOnPage,
       trafficSources: args.trafficSources,
       topReferrers: args.topReferrers,
       deviceBreakdown: args.deviceBreakdown,
@@ -403,7 +768,7 @@ export const aggregateDailySnapshots = internalAction({
         }
       }
 
-      // Create snapshot
+      // Create snapshot with granular metrics
       await ctx.runMutation(internal.analytics.upsertSnapshot, {
         actorProfileId: profile._id,
         slug: profile.slug,
@@ -415,7 +780,36 @@ export const aggregateDailySnapshots = internalAction({
         commentCount: counts["comment_submitted"] ?? 0,
         emailCaptures: counts["email_captured"] ?? 0,
         inquiries: counts["inquiry_submitted"] ?? 0,
+        watchCtaClicks: counts["watch_cta_clicked"] ?? 0,
         socialClicks: counts["social_link_clicked"] ?? 0,
+        // Granular CTA metrics
+        ctaMetrics: {
+          watchCtaClicks: counts["watch_cta_clicked"] ?? 0,
+          getUpdatesClicks: counts["get_updates_clicked"] ?? 0,
+          shareButtonClicks: counts["share_button_clicked"] ?? 0,
+          outboundLinkClicks: counts["outbound_link_clicked"] ?? 0,
+        },
+        // Video engagement metrics
+        videoEngagement: {
+          totalPlays: counts["video_play"] ?? 0,
+          progress25: counts["video_progress_25"] ?? 0,
+          progress50: counts["video_progress_50"] ?? 0,
+          progress75: counts["video_progress_75"] ?? 0,
+          progress100: counts["video_completed"] ?? 0,
+        },
+        // Scroll depth metrics
+        scrollDepth: {
+          reached25: counts["scroll_depth_25"] ?? 0,
+          reached50: counts["scroll_depth_50"] ?? 0,
+          reached75: counts["scroll_depth_75"] ?? 0,
+          reached100: counts["scroll_depth_100"] ?? 0,
+        },
+        // Time on page metrics
+        timeOnPage: {
+          reached30s: counts["time_on_page_30s"] ?? 0,
+          reached60s: counts["time_on_page_60s"] ?? 0,
+          reached180s: counts["time_on_page_180s"] ?? 0,
+        },
         source: "convex",
       });
     }
@@ -780,716 +1174,5 @@ export const getAggregatedMetrics = query({
       avgSessionDuration: durationCount > 0 ? totals.avgSessionDuration / durationCount : undefined,
       bounceRate: bounceCount > 0 ? totals.bounceRate / bounceCount : undefined,
     };
-  },
-});
-
-// =============================================================================
-// ADMIN QUERIES - Deep Analytics
-// =============================================================================
-
-/**
- * Get analytics overview for all users (admin view)
- * Supports filters for location, trailer status, and film count
- */
-export const getDeepAnalyticsAdmin = query({
-  args: {
-    daysBack: v.optional(v.number()),
-    // Location filters
-    city: v.optional(v.string()),
-    state: v.optional(v.string()),
-    country: v.optional(v.string()),
-    // Content filters
-    hasTrailer: v.optional(v.boolean()),
-    filmCount: v.optional(v.union(v.literal("one"), v.literal("multiple"))),
-  },
-  async handler(ctx, args) {
-    // Admin authorization check
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
-
-    const currentUser = await ctx.db
-      .query("users")
-      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
-      .unique();
-
-    if (!currentUser?.superadmin) throw new Error("Admin access required");
-
-    const daysBack = args.daysBack ?? 30;
-    const cutoffTime = Date.now() - daysBack * 24 * 60 * 60 * 1000;
-
-    // Get all actor profiles
-    let profiles = await ctx.db.query("actor_profiles").collect();
-
-    // Apply location filter if provided
-    if (args.city || args.state || args.country) {
-      profiles = profiles.filter((profile) => {
-        const location = profile.location?.toLowerCase() || "";
-        if (args.city && !location.includes(args.city.toLowerCase())) return false;
-        if (args.state && !location.includes(args.state.toLowerCase())) return false;
-        if (args.country && !location.includes(args.country.toLowerCase())) return false;
-        return true;
-      });
-    }
-
-    // Apply trailer filter
-    if (args.hasTrailer !== undefined) {
-      const profilesWithTrailerInfo = await Promise.all(
-        profiles.map(async (profile) => {
-          const projects = await ctx.db
-            .query("projects")
-            .withIndex("by_actorProfile", (q) => q.eq("actorProfileId", profile._id))
-            .collect();
-          const hasTrailer = projects.some((p) => p.trailerUrl);
-          return { profile, hasTrailer };
-        })
-      );
-      profiles = profilesWithTrailerInfo
-        .filter((p) => p.hasTrailer === args.hasTrailer)
-        .map((p) => p.profile);
-    }
-
-    // Apply film count filter
-    if (args.filmCount) {
-      const profilesWithFilmCount = await Promise.all(
-        profiles.map(async (profile) => {
-          const projects = await ctx.db
-            .query("projects")
-            .withIndex("by_actorProfile", (q) => q.eq("actorProfileId", profile._id))
-            .collect();
-          return { profile, filmCount: projects.length };
-        })
-      );
-      profiles = profilesWithFilmCount
-        .filter((p) =>
-          args.filmCount === "one" ? p.filmCount === 1 : p.filmCount > 1
-        )
-        .map((p) => p.profile);
-    }
-
-    // Aggregate analytics for filtered profiles
-    const profileIds = new Set(profiles.map((p) => p._id.toString()));
-
-    // Get events for all filtered profiles
-    const allEvents = await ctx.db.query("analytics_events").collect();
-    const filteredEvents = allEvents.filter(
-      (e) =>
-        e.actorProfileId &&
-        profileIds.has(e.actorProfileId.toString()) &&
-        e._creationTime >= cutoffTime
-    );
-
-    // Aggregate by event type
-    const counts: Record<string, number> = {};
-    const sessionsByProfile = new Map<string, Set<string>>();
-
-    for (const event of filteredEvents) {
-      counts[event.eventType] = (counts[event.eventType] ?? 0) + 1;
-      if (event.actorProfileId) {
-        const profileKey = event.actorProfileId.toString();
-        if (!sessionsByProfile.has(profileKey)) {
-          sessionsByProfile.set(profileKey, new Set());
-        }
-        if (event.sessionId) {
-          sessionsByProfile.get(profileKey)!.add(event.sessionId);
-        }
-      }
-    }
-
-    // Calculate unique sessions across all profiles
-    const allSessions = new Set<string>();
-    for (const sessions of sessionsByProfile.values()) {
-      for (const session of sessions) {
-        allSessions.add(session);
-      }
-    }
-
-    // Get users info for matched profiles
-    const userDetails = await Promise.all(
-      profiles.map(async (profile) => {
-        const user = await ctx.db.get(profile.userId);
-        const projects = await ctx.db
-          .query("projects")
-          .withIndex("by_actorProfile", (q) => q.eq("actorProfileId", profile._id))
-          .collect();
-        const hasTrailer = projects.some((p) => p.trailerUrl);
-        const profileSessions = sessionsByProfile.get(profile._id.toString());
-
-        return {
-          profileId: profile._id,
-          displayName: profile.displayName,
-          slug: profile.slug,
-          location: profile.location,
-          userName: user?.name || user?.email,
-          userEmail: user?.email,
-          filmCount: projects.length,
-          hasTrailer,
-          uniqueVisitors: profileSessions?.size ?? 0,
-        };
-      })
-    );
-
-    return {
-      period: `${daysBack} days`,
-      totalProfiles: profiles.length,
-      totalEvents: filteredEvents.length,
-      uniqueSessions: allSessions.size,
-      // Event breakdowns
-      pageViews: counts["page_view"] ?? 0,
-      clipPlays: counts["clip_played"] ?? 0,
-      clipShares: counts["clip_shared"] ?? 0,
-      emailCaptures: counts["email_captured"] ?? 0,
-      inquiries: counts["inquiry_submitted"] ?? 0,
-      comments: counts["comment_submitted"] ?? 0,
-      signups: counts["user_signup"] ?? 0,
-      profilesCreated: counts["profile_created"] ?? 0,
-      onboardingCompleted: counts["onboarding_completed"] ?? 0,
-      // User breakdown
-      users: userDetails,
-    };
-  },
-});
-
-/**
- * Search users and films with auto-suggest (admin view)
- * Returns max 3 results for each category
- */
-export const searchUsersAndFilmsAdmin = query({
-  args: {
-    query: v.string(),
-  },
-  async handler(ctx, args) {
-    // Admin authorization check
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
-
-    const currentUser = await ctx.db
-      .query("users")
-      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
-      .unique();
-
-    if (!currentUser?.superadmin) throw new Error("Admin access required");
-
-    const searchQuery = args.query.toLowerCase().trim();
-    if (!searchQuery || searchQuery.length < 2) {
-      return { users: [], films: [], profiles: [] };
-    }
-
-    // Search users (by name, email, display name)
-    const users = await ctx.db.query("users").collect();
-    const matchedUsers = users
-      .filter((user) => {
-        const name = (user.name || "").toLowerCase();
-        const email = (user.email || "").toLowerCase();
-        const displayName = (user.displayName || "").toLowerCase();
-        return (
-          name.includes(searchQuery) ||
-          email.includes(searchQuery) ||
-          displayName.includes(searchQuery)
-        );
-      })
-      .slice(0, 3)
-      .map((user) => ({
-        _id: user._id,
-        name: user.name || user.email,
-        email: user.email,
-        type: "user" as const,
-      }));
-
-    // Search films (by project title)
-    const projects = await ctx.db.query("projects").collect();
-    const matchedFilms = projects
-      .filter((project) => {
-        const title = (project.title || "").toLowerCase();
-        const logline = (project.logline || "").toLowerCase();
-        return title.includes(searchQuery) || logline.includes(searchQuery);
-      })
-      .slice(0, 3);
-
-    // Enrich films with profile info
-    const enrichedFilms = await Promise.all(
-      matchedFilms.map(async (project) => {
-        const profile = await ctx.db.get(project.actorProfileId);
-        return {
-          _id: project._id,
-          title: project.title,
-          profileName: profile?.displayName,
-          profileSlug: profile?.slug,
-          posterUrl: project.posterUrl,
-          type: "film" as const,
-        };
-      })
-    );
-
-    // Also search actor profiles
-    const profiles = await ctx.db.query("actor_profiles").collect();
-    const matchedProfiles = profiles
-      .filter((profile) => {
-        const displayName = (profile.displayName || "").toLowerCase();
-        const slug = (profile.slug || "").toLowerCase();
-        return displayName.includes(searchQuery) || slug.includes(searchQuery);
-      })
-      .slice(0, 3);
-
-    const enrichedProfiles = await Promise.all(
-      matchedProfiles.map(async (profile) => {
-        const user = await ctx.db.get(profile.userId);
-        return {
-          _id: profile._id,
-          displayName: profile.displayName,
-          slug: profile.slug,
-          userName: user?.name || user?.email,
-          type: "profile" as const,
-        };
-      })
-    );
-
-    return {
-      users: matchedUsers,
-      films: enrichedFilms,
-      profiles: enrichedProfiles,
-    };
-  },
-});
-
-/**
- * Get analytics for a specific user/profile (admin detail view)
- */
-export const getProfileAnalyticsAdmin = query({
-  args: {
-    profileId: v.id("actor_profiles"),
-    daysBack: v.optional(v.number()),
-  },
-  async handler(ctx, args) {
-    // Admin authorization check
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
-
-    const currentUser = await ctx.db
-      .query("users")
-      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
-      .unique();
-
-    if (!currentUser?.superadmin) throw new Error("Admin access required");
-
-    const daysBack = args.daysBack ?? 30;
-    const cutoffTime = Date.now() - daysBack * 24 * 60 * 60 * 1000;
-
-    const profile = await ctx.db.get(args.profileId);
-    if (!profile) {
-      return null;
-    }
-
-    const user = await ctx.db.get(profile.userId);
-
-    // Get projects
-    const projects = await ctx.db
-      .query("projects")
-      .withIndex("by_actorProfile", (q) => q.eq("actorProfileId", args.profileId))
-      .collect();
-
-    // Get events
-    const allEvents = await ctx.db
-      .query("analytics_events")
-      .withIndex("by_actorProfile", (q) => q.eq("actorProfileId", args.profileId))
-      .collect();
-
-    const recentEvents = allEvents.filter((e) => e._creationTime >= cutoffTime);
-
-    // Aggregate
-    const counts: Record<string, number> = {};
-    const sessions = new Set<string>();
-
-    for (const event of recentEvents) {
-      counts[event.eventType] = (counts[event.eventType] ?? 0) + 1;
-      if (event.sessionId) {
-        sessions.add(event.sessionId);
-      }
-    }
-
-    // Get snapshots for trend data
-    const startDate = new Date(cutoffTime).toISOString().split("T")[0];
-    const endDate = new Date().toISOString().split("T")[0];
-
-    const snapshots = await ctx.db
-      .query("analytics_snapshots")
-      .withIndex("by_profile", (q) => q.eq("actorProfileId", args.profileId))
-      .collect();
-
-    const filteredSnapshots = snapshots
-      .filter((s) => s.date >= startDate && s.date <= endDate)
-      .sort((a, b) => a.date.localeCompare(b.date));
-
-    return {
-      profile: {
-        _id: profile._id,
-        displayName: profile.displayName,
-        slug: profile.slug,
-        location: profile.location,
-      },
-      user: {
-        _id: user?._id,
-        name: user?.name,
-        email: user?.email,
-      },
-      projects: projects.map((p) => ({
-        _id: p._id,
-        title: p.title,
-        hasTrailer: !!p.trailerUrl,
-        posterUrl: p.posterUrl,
-      })),
-      metrics: {
-        period: `${daysBack} days`,
-        totalEvents: recentEvents.length,
-        uniqueSessions: sessions.size,
-        pageViews: counts["page_view"] ?? 0,
-        clipPlays: counts["clip_played"] ?? 0,
-        clipShares: counts["clip_shared"] ?? 0,
-        emailCaptures: counts["email_captured"] ?? 0,
-        inquiries: counts["inquiry_submitted"] ?? 0,
-        comments: counts["comment_submitted"] ?? 0,
-      },
-      snapshots: filteredSnapshots,
-    };
-  },
-});
-
-// =============================================================================
-// ADMIN QUERIES - Assets
-// =============================================================================
-
-/**
- * Get all assets (clips, memes, GIFs) across all users (admin view)
- * Returns enriched data with user info and asset details
- */
-export const getAllAssetsAdmin = query({
-  args: {
-    assetType: v.optional(v.union(v.literal("clip"), v.literal("meme"), v.literal("gif"), v.literal("all"))),
-    userId: v.optional(v.id("users")),
-    profileId: v.optional(v.id("actor_profiles")),
-    limit: v.optional(v.number()),
-    sortBy: v.optional(v.union(v.literal("recent"), v.literal("score"), v.literal("viral"))),
-  },
-  async handler(ctx, args) {
-    // Admin authorization check
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
-
-    const currentUser = await ctx.db
-      .query("users")
-      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
-      .unique();
-
-    if (!currentUser?.superadmin) throw new Error("Admin access required");
-
-    const limit = args.limit ?? 50;
-    const assetType = args.assetType ?? "all";
-    const sortBy = args.sortBy ?? "recent";
-    const r2Bucket = process.env.R2_PUBLIC_BUCKET_URL;
-
-    type AssetData = {
-      _id: string;
-      type: "clip" | "meme" | "gif";
-      title: string;
-      thumbnailUrl: string | null;
-      createdAt: number;
-      score?: number;
-      viralScore?: number;
-      actorProfileId: Id<"actor_profiles">;
-      userId?: Id<"users">;
-      profileName?: string;
-      profileSlug?: string;
-      userName?: string;
-      userEmail?: string;
-      boosted?: boolean;
-      boostCampaignId?: Id<"boost_campaigns">;
-    };
-
-    const assets: AssetData[] = [];
-
-    // Fetch clips
-    if (assetType === "all" || assetType === "clip") {
-      const clips = args.profileId
-        ? await ctx.db
-            .query("generated_clips")
-            .withIndex("by_actorProfile", (q) =>
-              q.eq("actorProfileId", args.profileId!)
-            )
-            .order("desc")
-            .take(limit)
-        : await ctx.db.query("generated_clips").order("desc").take(limit);
-
-      for (const clip of clips) {
-        assets.push({
-          _id: clip._id,
-          type: "clip",
-          title: clip.title,
-          thumbnailUrl: clip.customThumbnailUrl || clip.thumbnailUrl || null,
-          createdAt: clip.createdAt,
-          score: clip.score,
-          actorProfileId: clip.actorProfileId,
-        });
-      }
-    }
-
-    // Fetch memes
-    if (assetType === "all" || assetType === "meme") {
-      const memes = args.profileId
-        ? await ctx.db
-            .query("generated_memes")
-            .withIndex("by_actorProfile", (q) =>
-              q.eq("actorProfileId", args.profileId!)
-            )
-            .order("desc")
-            .take(limit)
-        : await ctx.db.query("generated_memes").order("desc").take(limit);
-
-      for (const meme of memes) {
-        let thumbnailUrl: string | null = null;
-        if (meme.memeStorageId) {
-          thumbnailUrl = await ctx.storage.getUrl(meme.memeStorageId);
-        } else if (r2Bucket && meme.r2MemeKey) {
-          thumbnailUrl = `${r2Bucket}/${meme.r2MemeKey}`;
-        } else if (r2Bucket && meme.r2FrameKey) {
-          thumbnailUrl = `${r2Bucket}/${meme.r2FrameKey}`;
-        } else {
-          thumbnailUrl = meme.memeUrl || meme.frameUrl || null;
-        }
-
-        assets.push({
-          _id: meme._id,
-          type: "meme",
-          title: meme.caption?.slice(0, 50) || "Meme",
-          thumbnailUrl,
-          createdAt: meme.createdAt,
-          viralScore: meme.viralScore,
-          actorProfileId: meme.actorProfileId,
-        });
-      }
-    }
-
-    // Fetch GIFs
-    if (assetType === "all" || assetType === "gif") {
-      const gifs = args.profileId
-        ? await ctx.db
-            .query("generated_gifs")
-            .withIndex("by_actorProfile", (q) =>
-              q.eq("actorProfileId", args.profileId!)
-            )
-            .order("desc")
-            .take(limit)
-        : await ctx.db.query("generated_gifs").order("desc").take(limit);
-
-      for (const gif of gifs) {
-        let thumbnailUrl: string | null = null;
-        if (gif.storageId) {
-          thumbnailUrl = await ctx.storage.getUrl(gif.storageId);
-        } else if (r2Bucket && gif.r2GifKey) {
-          thumbnailUrl = `${r2Bucket}/${gif.r2GifKey}`;
-        } else {
-          thumbnailUrl = gif.gifUrl || null;
-        }
-
-        assets.push({
-          _id: gif._id,
-          type: "gif",
-          title: gif.title || "GIF",
-          thumbnailUrl,
-          createdAt: gif.createdAt,
-          viralScore: gif.viralScore,
-          actorProfileId: gif.actorProfileId,
-        });
-      }
-    }
-
-    // Get boost campaigns to check which assets are boosted
-    const boostCampaigns = await ctx.db.query("boost_campaigns").collect();
-    const boostedAssets = new Map<string, Id<"boost_campaigns">>();
-    for (const campaign of boostCampaigns) {
-      if (campaign.assetId && (campaign.status === "active" || campaign.status === "completed")) {
-        boostedAssets.set(campaign.assetId, campaign._id);
-      }
-    }
-
-    // Enrich assets with user info
-    const enrichedAssets = await Promise.all(
-      assets.map(async (asset) => {
-        const profile = await ctx.db.get(asset.actorProfileId);
-        const user = profile ? await ctx.db.get(profile.userId) : null;
-
-        return {
-          ...asset,
-          profileName: profile?.displayName,
-          profileSlug: profile?.slug,
-          userName: user?.name || user?.email,
-          userEmail: user?.email,
-          userId: profile?.userId,
-          boosted: boostedAssets.has(asset._id),
-          boostCampaignId: boostedAssets.get(asset._id),
-        };
-      })
-    );
-
-    // Filter by user if specified
-    let filteredAssets = enrichedAssets;
-    if (args.userId) {
-      filteredAssets = enrichedAssets.filter((a) => a.userId === args.userId);
-    }
-
-    // Sort
-    if (sortBy === "score") {
-      filteredAssets.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
-    } else if (sortBy === "viral") {
-      filteredAssets.sort((a, b) => (b.viralScore ?? 0) - (a.viralScore ?? 0));
-    } else {
-      filteredAssets.sort((a, b) => b.createdAt - a.createdAt);
-    }
-
-    return filteredAssets.slice(0, limit);
-  },
-});
-
-/**
- * Get asset summary stats for admin dashboard
- */
-export const getAssetSummaryAdmin = query({
-  args: {},
-  async handler(ctx) {
-    // Admin authorization check
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
-
-    const currentUser = await ctx.db
-      .query("users")
-      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
-      .unique();
-
-    if (!currentUser?.superadmin) throw new Error("Admin access required");
-
-    const [clips, memes, gifs] = await Promise.all([
-      ctx.db.query("generated_clips").collect(),
-      ctx.db.query("generated_memes").collect(),
-      ctx.db.query("generated_gifs").collect(),
-    ]);
-
-    // Count by time periods
-    const now = Date.now();
-    const today = now - 24 * 60 * 60 * 1000;
-    const thisWeek = now - 7 * 24 * 60 * 60 * 1000;
-    const thisMonth = now - 30 * 24 * 60 * 60 * 1000;
-
-    const clipsToday = clips.filter((c) => c.createdAt >= today).length;
-    const memesToday = memes.filter((m) => m.createdAt >= today).length;
-    const gifsToday = gifs.filter((g) => g.createdAt >= today).length;
-
-    const clipsWeek = clips.filter((c) => c.createdAt >= thisWeek).length;
-    const memesWeek = memes.filter((m) => m.createdAt >= thisWeek).length;
-    const gifsWeek = gifs.filter((g) => g.createdAt >= thisWeek).length;
-
-    const clipsMonth = clips.filter((c) => c.createdAt >= thisMonth).length;
-    const memesMonth = memes.filter((m) => m.createdAt >= thisMonth).length;
-    const gifsMonth = gifs.filter((g) => g.createdAt >= thisMonth).length;
-
-    // Get unique profiles
-    const profileIds = new Set([
-      ...clips.map((c) => c.actorProfileId.toString()),
-      ...memes.map((m) => m.actorProfileId.toString()),
-      ...gifs.map((g) => g.actorProfileId.toString()),
-    ]);
-
-    // Get boost campaigns
-    const boostCampaigns = await ctx.db.query("boost_campaigns").collect();
-    const activeBoostedAssets = boostCampaigns
-      .filter((c) => c.status === "active" && c.assetId)
-      .map((c) => c.assetId);
-
-    // Calculate average scores
-    const clipScores = clips.filter((c) => c.score).map((c) => c.score!);
-    const memeScores = memes.filter((m) => m.viralScore).map((m) => m.viralScore!);
-    const gifScores = gifs.filter((g) => g.viralScore).map((g) => g.viralScore!);
-
-    const avgClipScore = clipScores.length > 0
-      ? Math.round(clipScores.reduce((a, b) => a + b, 0) / clipScores.length)
-      : 0;
-    const avgMemeScore = memeScores.length > 0
-      ? Math.round(memeScores.reduce((a, b) => a + b, 0) / memeScores.length)
-      : 0;
-    const avgGifScore = gifScores.length > 0
-      ? Math.round(gifScores.reduce((a, b) => a + b, 0) / gifScores.length)
-      : 0;
-
-    return {
-      totalClips: clips.length,
-      totalMemes: memes.length,
-      totalGifs: gifs.length,
-      totalAssets: clips.length + memes.length + gifs.length,
-      // Today
-      clipsToday,
-      memesToday,
-      gifsToday,
-      assetsToday: clipsToday + memesToday + gifsToday,
-      // This week
-      clipsWeek,
-      memesWeek,
-      gifsWeek,
-      assetsWeek: clipsWeek + memesWeek + gifsWeek,
-      // This month
-      clipsMonth,
-      memesMonth,
-      gifsMonth,
-      assetsMonth: clipsMonth + memesMonth + gifsMonth,
-      // Other stats
-      uniqueProfiles: profileIds.size,
-      activeBoostedCount: activeBoostedAssets.length,
-      avgClipScore,
-      avgMemeScore,
-      avgGifScore,
-    };
-  },
-});
-
-/**
- * Get all users for filtering dropdown (admin view)
- */
-export const getAllUsersAdmin = query({
-  args: {},
-  async handler(ctx) {
-    // Admin authorization check
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
-
-    const currentUser = await ctx.db
-      .query("users")
-      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
-      .unique();
-
-    if (!currentUser?.superadmin) throw new Error("Admin access required");
-
-    const users = await ctx.db.query("users").collect();
-    const profiles = await ctx.db.query("actor_profiles").collect();
-
-    // Build user-profile map
-    const profilesByUser = new Map<string, typeof profiles>();
-    for (const profile of profiles) {
-      const key = profile.userId.toString();
-      if (!profilesByUser.has(key)) {
-        profilesByUser.set(key, []);
-      }
-      profilesByUser.get(key)!.push(profile);
-    }
-
-    return users.map((user) => {
-      const userProfiles = profilesByUser.get(user._id.toString()) || [];
-      return {
-        _id: user._id,
-        name: user.name || user.email,
-        email: user.email,
-        profileCount: userProfiles.length,
-        profiles: userProfiles.map((p) => ({
-          _id: p._id,
-          displayName: p.displayName,
-          slug: p.slug,
-        })),
-      };
-    });
   },
 });
