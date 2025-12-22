@@ -7,7 +7,7 @@ import {
   internalQuery,
   internalAction,
 } from "./_generated/server";
-import { internal } from "./_generated/api";
+import { internal, components } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
 import { Resend } from "resend";
 
@@ -245,6 +245,10 @@ export const createCampaign = mutation({
           estimatedRecipientCount++;
         }
       }
+    } else if (args.audienceType === "incomplete_onboarding") {
+      // For incomplete_onboarding, we need to count this via action
+      // Set to 0 for now - will be updated when the count query runs
+      estimatedRecipientCount = 0;
     }
 
     const now = Date.now();
@@ -860,6 +864,63 @@ export const getCampaignRecipients = internalQuery({
       }));
     }
 
+    // Handle "incomplete_onboarding" audience type - users who signed up but didn't complete onboarding
+    if (audienceType === "incomplete_onboarding") {
+      // Get all betterAuth users
+      const authUsersResult = await ctx.runQuery(
+        internal.campaigns.getBetterAuthUsers,
+        {}
+      );
+
+      // Get all application users (those who have completed at least part of onboarding)
+      const appUsers = await ctx.db.query("users").collect();
+      const appUserAuthIds = new Set(appUsers.map((u) => u.authId));
+
+      // Get all actor profiles to check for completed onboarding
+      const actorProfiles = await ctx.db.query("actor_profiles").collect();
+      const userIdsWithProfiles = new Set(
+        actorProfiles.map((p) => p.userId.toString())
+      );
+
+      // Filter to auth users who either:
+      // 1. Don't have a corresponding app user entry, OR
+      // 2. Have an app user entry but no actor profile (started but didn't complete)
+      const incompleteUsers = [];
+      for (const authUser of authUsersResult) {
+        // Skip if no email
+        if (!authUser.email) continue;
+
+        // Check if user exists in app users table
+        const appUser = appUsers.find((u) => u.authId === authUser._id);
+
+        if (!appUser) {
+          // User signed up via betterAuth but never got to app user creation
+          incompleteUsers.push({
+            email: authUser.email,
+            name: authUser.name || undefined,
+            authId: authUser._id,
+          });
+        } else if (!userIdsWithProfiles.has(appUser._id.toString())) {
+          // User exists in app but doesn't have an actor profile
+          incompleteUsers.push({
+            email: authUser.email,
+            name: authUser.name || appUser.name || appUser.displayName || undefined,
+            authId: authUser._id,
+            userId: appUser._id,
+          });
+        }
+      }
+
+      return incompleteUsers.map((u) => ({
+        fanEmailId: null as unknown as Id<"fan_emails">,
+        userId: u.userId || null,
+        email: u.email,
+        name: u.name,
+        unsubscribeToken: undefined,
+        isUserBased: true,
+      }));
+    }
+
     let subscribers: Doc<"fan_emails">[] = [];
 
     if (audienceType === "creator_subscribers") {
@@ -1050,5 +1111,67 @@ export const sendTestEmail = action({
       success: true,
       emailId: result.data?.id,
     };
+  },
+});
+
+// ============================================
+// BETTER AUTH USER QUERIES
+// ============================================
+
+/**
+ * Get all betterAuth users for incomplete onboarding audience
+ */
+export const getBetterAuthUsers = internalQuery({
+  args: {},
+  async handler(ctx) {
+    // Query betterAuth users using the adapter
+    const result = await ctx.runQuery(components.betterAuth.adapter.findMany, {
+      model: "user",
+      paginationOpts: {
+        cursor: null,
+        numItems: 10000, // Get all users
+      },
+    });
+
+    return result.page || [];
+  },
+});
+
+/**
+ * Get count of users with incomplete onboarding (for audience stats)
+ */
+export const getIncompleteOnboardingCount = internalQuery({
+  args: {},
+  async handler(ctx) {
+    // Get all betterAuth users
+    const authUsersResult = await ctx.runQuery(
+      internal.campaigns.getBetterAuthUsers,
+      {}
+    );
+
+    // Get all application users
+    const appUsers = await ctx.db.query("users").collect();
+
+    // Get all actor profiles
+    const actorProfiles = await ctx.db.query("actor_profiles").collect();
+    const userIdsWithProfiles = new Set(
+      actorProfiles.map((p) => p.userId.toString())
+    );
+
+    // Count users who either:
+    // 1. Don't have a corresponding app user entry, OR
+    // 2. Have an app user entry but no actor profile
+    let count = 0;
+    for (const authUser of authUsersResult) {
+      if (!authUser.email) continue;
+
+      const appUser = appUsers.find((u) => u.authId === authUser._id);
+
+      if (!appUser || !userIdsWithProfiles.has(appUser._id.toString())) {
+        count++;
+      }
+    }
+
+    return count;
   },
 });
