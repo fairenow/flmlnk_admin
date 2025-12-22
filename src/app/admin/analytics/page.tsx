@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
@@ -8,7 +8,6 @@ import Link from "next/link";
 import {
   BarChart3,
   ChevronLeft,
-  Filter,
   Search,
   Users,
   Eye,
@@ -26,16 +25,10 @@ import {
   Activity,
   UserCheck,
   Inbox,
-  Share2,
   MousePointer,
-  ArrowUpRight,
-  ArrowDownRight,
-  BarChart2,
   PieChart as PieChartIcon,
 } from "lucide-react";
 import {
-  LineChart,
-  Line,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -87,8 +80,8 @@ export default function AdminAnalyticsPage() {
   // Fetch page-by-page analytics
   const pageAnalytics = useQuery(api.analytics.getPageByPageAnalyticsAdmin, { daysBack });
 
-  // Fetch analytics with filters (existing)
-  const analytics = useQuery(api.analytics.getDeepAnalyticsAdmin, {
+  // Fetch analytics with filters (existing) - preserved for future filtered views
+  const _analytics = useQuery(api.analytics.getDeepAnalyticsAdmin, {
     daysBack,
     city: cityFilter || undefined,
     state: stateFilter || undefined,
@@ -122,7 +115,8 @@ export default function AdminAnalyticsPage() {
 
   const isLoading = siteStats === undefined;
 
-  const clearFilters = () => {
+  // Filter utilities - preserved for future filtered views
+  const _clearFilters = () => {
     setCityFilter("");
     setStateFilter("");
     setCountryFilter("");
@@ -130,7 +124,7 @@ export default function AdminAnalyticsPage() {
     setFilmCountFilter(undefined);
   };
 
-  const hasActiveFilters = cityFilter || stateFilter || countryFilter || hasTrailerFilter !== undefined || filmCountFilter;
+  const _hasActiveFilters = cityFilter || stateFilter || countryFilter || hasTrailerFilter !== undefined || filmCountFilter;
 
   // Tab content
   const tabs: { key: TabType; label: string; icon: React.ReactNode }[] = [
