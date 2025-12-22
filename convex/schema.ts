@@ -22,10 +22,10 @@ export default defineSchema({
     // Account type
     isBusinessAccount: v.optional(v.boolean()),
     isVerified: v.optional(v.boolean()),
-    // Admin access
-    superadmin: v.optional(v.boolean()),
     // For ad features
     adBalanceCents: v.optional(v.number()),
+    // Admin access
+    superadmin: v.optional(v.boolean()),
   })
     .index("by_authId", ["authId"])
     .index("by_username", ["username"]),
@@ -262,14 +262,49 @@ export default defineSchema({
     actorProfileId: v.optional(v.id("actor_profiles")),
     projectId: v.optional(v.id("projects")),
     clipId: v.optional(v.id("clips")),
-    eventType: v.string(), // page_view, clip_play, email_submit, etc.
+    eventType: v.string(), // page_view, clip_play, email_submit, watch_cta_clicked, etc.
     sessionId: v.string(),
     userAgent: v.optional(v.string()),
     referrer: v.optional(v.string()),
-    metadata: v.optional(v.any()),
+    // Granular event metadata for Deep Analytics
+    metadata: v.optional(v.object({
+      // CTA tracking
+      ctaLabel: v.optional(v.string()),
+      ctaUrl: v.optional(v.string()),
+      ctaPosition: v.optional(v.string()), // "hero", "footer", "sidebar"
+      // Social tracking
+      socialPlatform: v.optional(v.string()), // "instagram", "facebook", "youtube", etc.
+      socialAction: v.optional(v.string()), // "click", "share", "follow"
+      // Video tracking
+      videoProgress: v.optional(v.number()), // 0-100 percentage
+      videoDuration: v.optional(v.number()), // total duration in seconds
+      videoCurrentTime: v.optional(v.number()), // current playback position
+      // Navigation tracking
+      tabName: v.optional(v.string()),
+      previousTab: v.optional(v.string()),
+      // Asset tracking (for Deep Analytics)
+      assetId: v.optional(v.string()),
+      assetType: v.optional(v.string()), // "clip", "meme", "gif", "trailer", "poster"
+      assetTitle: v.optional(v.string()),
+      // Scroll tracking
+      scrollDepth: v.optional(v.number()), // 0-100 percentage
+      // Time tracking
+      timeOnPage: v.optional(v.number()), // seconds
+      // Device info
+      deviceType: v.optional(v.string()), // "mobile", "desktop", "tablet"
+      screenWidth: v.optional(v.number()),
+      screenHeight: v.optional(v.number()),
+      // Outbound links
+      outboundUrl: v.optional(v.string()),
+      outboundLabel: v.optional(v.string()),
+      // Project tracking
+      projectId: v.optional(v.string()),
+      projectTitle: v.optional(v.string()),
+    })),
   }).index("by_actorProfile", ["actorProfileId"])
     .index("by_project", ["projectId"])
-    .index("by_clip", ["clipId"]),
+    .index("by_clip", ["clipId"])
+    .index("by_eventType", ["eventType"]),
 
   usage_daily_metrics: defineTable({
     // ISO date string, e.g. "2025-11-19"
@@ -434,6 +469,72 @@ export default defineSchema({
     socialClicks: v.optional(v.number()),
     watchCtaClicks: v.optional(v.number()),
 
+    // Granular CTA metrics (for Deep Analytics)
+    ctaMetrics: v.optional(v.object({
+      watchCtaClicks: v.optional(v.number()),
+      getUpdatesClicks: v.optional(v.number()),
+      shareButtonClicks: v.optional(v.number()),
+      outboundLinkClicks: v.optional(v.number()),
+    })),
+
+    // Social engagement breakdown
+    socialEngagement: v.optional(v.object({
+      instagramClicks: v.optional(v.number()),
+      facebookClicks: v.optional(v.number()),
+      youtubeClicks: v.optional(v.number()),
+      tiktokClicks: v.optional(v.number()),
+      imdbClicks: v.optional(v.number()),
+      websiteClicks: v.optional(v.number()),
+    })),
+
+    // Video engagement metrics
+    videoEngagement: v.optional(v.object({
+      totalPlays: v.optional(v.number()),
+      uniquePlays: v.optional(v.number()),
+      avgWatchTime: v.optional(v.number()), // seconds
+      completionRate: v.optional(v.number()), // 0-100 percentage
+      progress25: v.optional(v.number()), // count of users reaching 25%
+      progress50: v.optional(v.number()),
+      progress75: v.optional(v.number()),
+      progress100: v.optional(v.number()),
+    })),
+
+    // Tab navigation metrics
+    tabEngagement: v.optional(v.object({
+      aboutViews: v.optional(v.number()),
+      commentsViews: v.optional(v.number()),
+      filmsViews: v.optional(v.number()),
+      clipsViews: v.optional(v.number()),
+      contactViews: v.optional(v.number()),
+    })),
+
+    // Scroll depth metrics
+    scrollDepth: v.optional(v.object({
+      reached25: v.optional(v.number()),
+      reached50: v.optional(v.number()),
+      reached75: v.optional(v.number()),
+      reached100: v.optional(v.number()),
+    })),
+
+    // Time on page metrics
+    timeOnPage: v.optional(v.object({
+      avg: v.optional(v.number()), // average seconds
+      reached30s: v.optional(v.number()), // count
+      reached60s: v.optional(v.number()),
+      reached180s: v.optional(v.number()),
+    })),
+
+    // Asset performance (for Deep Analytics)
+    assetPerformance: v.optional(v.array(v.object({
+      assetId: v.string(),
+      assetType: v.string(), // "clip", "meme", "gif", "trailer"
+      assetTitle: v.optional(v.string()),
+      impressions: v.number(),
+      engagements: v.number(),
+      shares: v.optional(v.number()),
+      avgWatchTime: v.optional(v.number()),
+    }))),
+
     // Source breakdown (from GA4)
     trafficSources: v.optional(
       v.object({
@@ -461,46 +562,6 @@ export default defineSchema({
         mobile: v.number(),
         desktop: v.number(),
         tablet: v.number(),
-      })
-    ),
-
-    // CTA metrics
-    ctaMetrics: v.optional(
-      v.object({
-        getUpdatesClicks: v.number(),
-        outboundLinkClicks: v.number(),
-        shareButtonClicks: v.number(),
-        watchCtaClicks: v.number(),
-      })
-    ),
-
-    // Scroll depth metrics
-    scrollDepth: v.optional(
-      v.object({
-        reached25: v.number(),
-        reached50: v.number(),
-        reached75: v.number(),
-        reached100: v.number(),
-      })
-    ),
-
-    // Time on page metrics
-    timeOnPage: v.optional(
-      v.object({
-        reached30s: v.number(),
-        reached60s: v.number(),
-        reached180s: v.number(),
-      })
-    ),
-
-    // Video engagement metrics
-    videoEngagement: v.optional(
-      v.object({
-        totalPlays: v.number(),
-        progress25: v.number(),
-        progress50: v.number(),
-        progress75: v.number(),
-        progress100: v.number(),
       })
     ),
 
@@ -1739,7 +1800,7 @@ export default defineSchema({
     // Post content
     caption: v.string(),
     hashtags: v.optional(v.array(v.string())),
-    link: v.optional(v.string()), // film.flmlnk.com/f/{slug} or custom link
+    link: v.optional(v.string()), // flmlnk.com/f/{slug} or custom link
 
     // Asset references
     assetRefs: v.optional(
@@ -1842,7 +1903,7 @@ export default defineSchema({
     // AI-generated suggestions
     suggestedCaption: v.string(),
     suggestedHashtags: v.array(v.string()),
-    suggestedLink: v.optional(v.string()), // film.flmlnk.com/f/{slug}
+    suggestedLink: v.optional(v.string()), // flmlnk.com/f/{slug}
 
     // Platform fitness scores (0-100)
     platformFitness: v.object({
@@ -2187,12 +2248,12 @@ export default defineSchema({
     timestampPlanId: v.optional(v.id("trailer_timestamp_plans")),
     textCardPlanId: v.optional(v.id("trailer_text_card_plans")),
     audioPlanId: v.optional(v.id("trailer_audio_plans")),
-    narrationPlanId: v.optional(v.id("trailer_narration_plans")),
     effectsPlanId: v.optional(v.id("trailer_effects_plans")), // Phase 6: transitions & speed effects
     overlayPlanId: v.optional(v.id("trailer_overlay_plans")), // Phase 7: branding & overlays
     workflowPlanId: v.optional(v.id("trailer_workflow_plans")), // Phase 8: workflow & previews
     aiSelectionPlanId: v.optional(v.id("trailer_ai_selection_plans")), // Phase 9: AI selection
-    filmIdentityId: v.optional(v.id("trailer_film_identities")),
+    filmIdentityId: v.optional(v.id("trailer_film_identities")), // Film classification (genre, tone, archetype)
+    narrationPlanId: v.optional(v.id("trailer_narration_plans")), // Narration/VO plan
 
     // Outputs
     clipIds: v.optional(v.array(v.id("trailer_clips"))),
@@ -2425,7 +2486,7 @@ export default defineSchema({
         motion: v.string(), // "fade_up" | "push_in" | "cut" | "typewriter"
         fontSize: v.optional(v.number()), // Override default sizing
         position: v.optional(v.string()), // "center" | "lower_third" | "upper"
-        purpose: v.optional(v.string()), // "hook" | "title" | "tagline" | etc.
+        purpose: v.optional(v.string()), // "hook" | "stakes" | "button" | etc.
       })
     ),
 
@@ -2966,4 +3027,100 @@ export default defineSchema({
     .index("by_trailerJob", ["trailerJobId"])
     .index("by_selectionPlan", ["selectionPlanId"])
     .index("by_status", ["status"]),
+
+  // Film identity classification results
+  trailer_film_identities: defineTable({
+    trailerJobId: v.id("trailer_jobs"),
+
+    // Primary classification
+    primaryGenre: v.string(), // "horror", "comedy", "documentary", "drama", etc.
+    secondaryGenres: v.array(v.string()),
+
+    // Tone & themes
+    tone: v.string(), // "dark", "uplifting", "tense", "absurd", "heartfelt", "mysterious"
+    themes: v.array(v.string()), // ["grief", "redemption", "justice", "family", etc.]
+    message: v.optional(v.string()), // One sentence summary
+
+    // Story archetype
+    archetype: v.optional(v.string()), // "underdog", "hero_journey", "revenge", "mystery", etc.
+    spoilerSensitivity: v.number(), // 0-1 (how careful to be with plot reveals)
+
+    // Confidence & evidence
+    confidence: v.number(), // 0-1
+    evidence: v.array(
+      v.object({
+        type: v.string(), // "dialogue", "scene", "audio", "visual", "structural"
+        timestamp: v.optional(v.number()),
+        note: v.string(),
+        signalStrength: v.number(), // 0-1
+      })
+    ),
+
+    // Classification metadata
+    classificationStage: v.string(), // "early" or "full"
+    extractedSignals: v.optional(
+      v.object({
+        transcriptSignals: v.optional(v.any()),
+        visualSignals: v.optional(v.any()),
+        audioSignals: v.optional(v.any()),
+        structuralSignals: v.optional(v.any()),
+      })
+    ),
+
+    // Style decisions derived from identity (audit trail)
+    styleDecisions: v.optional(
+      v.array(
+        v.object({
+          decision: v.string(), // "title_card_style", "music_mood", "narration_policy"
+          value: v.string(), // The chosen value
+          reason: v.string(), // Why this was chosen
+          overridden: v.optional(v.boolean()), // User changed it?
+        })
+      )
+    ),
+
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+  }).index("by_trailerJob", ["trailerJobId"]),
+
+  // Narration/voiceover plans for trailers
+  trailer_narration_plans: defineTable({
+    trailerJobId: v.id("trailer_jobs"),
+    profileId: v.optional(v.id("trailer_profiles")),
+
+    // Policy
+    narrationEnabled: v.boolean(),
+    policyReason: v.string(),
+    template: v.string(), // "dramatic", "explanatory", "conversational", "legacy", "none"
+    voicePersona: v.string(), // "epic_trailer", "documentary", "warm_narrator", etc.
+
+    // Script lines
+    script: v.array(
+      v.object({
+        lineIndex: v.number(),
+        text: v.string(),
+        startSec: v.number(),
+        endSec: v.number(),
+        purpose: v.string(), // "hook", "stakes", "question", "call_to_action"
+      })
+    ),
+
+    // Timing anchors for VO placement
+    timingAnchors: v.array(
+      v.object({
+        anchorType: v.string(), // "impact", "rise", "dialogue_gap"
+        atSec: v.number(),
+        description: v.string(),
+      })
+    ),
+
+    totalVoDuration: v.number(),
+
+    // Generated audio
+    audioR2Key: v.optional(v.string()),
+    audioDurationSec: v.optional(v.number()),
+
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+  }).index("by_trailerJob", ["trailerJobId"]),
 });

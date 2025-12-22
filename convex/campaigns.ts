@@ -233,18 +233,6 @@ export const createCampaign = mutation({
           .collect();
         estimatedRecipientCount = allSubscribers.filter((s) => !s.unsubscribed).length;
       }
-    } else if (args.audienceType === "all_filmmakers") {
-      // Count users who have actor profiles (filmmakers)
-      const users = await ctx.db.query("users").collect();
-      for (const user of users) {
-        const hasProfile = await ctx.db
-          .query("actor_profiles")
-          .withIndex("by_user", (q) => q.eq("userId", user._id))
-          .first();
-        if (hasProfile && user.email) {
-          estimatedRecipientCount++;
-        }
-      }
     }
 
     const now = Date.now();
@@ -567,12 +555,10 @@ interface CampaignSendResult {
 
 // Recipient type for email sending
 interface CampaignRecipient {
-  fanEmailId: Id<"fan_emails"> | null;
-  userId?: Id<"users"> | null;
+  fanEmailId: Id<"fan_emails">;
   email: string;
   name?: string;
   unsubscribeToken?: string;
-  isUserBased?: boolean;
 }
 
 /**
@@ -727,8 +713,7 @@ export const executeCampaignSend = internalAction({
 
             if (result.error) {
               await ctx.runMutation(internal.campaigns.updateRecipientStatus, {
-                fanEmailId: recipient.fanEmailId || undefined,
-                email: recipient.email,
+                fanEmailId: recipient.fanEmailId,
                 campaignId,
                 status: "failed",
                 errorMessage: result.error.message,
@@ -736,8 +721,7 @@ export const executeCampaignSend = internalAction({
               failed++;
             } else {
               await ctx.runMutation(internal.campaigns.updateRecipientStatus, {
-                fanEmailId: recipient.fanEmailId || undefined,
-                email: recipient.email,
+                fanEmailId: recipient.fanEmailId,
                 campaignId,
                 status: "sent",
                 resendEmailId: result.data?.id,
@@ -746,8 +730,7 @@ export const executeCampaignSend = internalAction({
             }
           } catch (error) {
             await ctx.runMutation(internal.campaigns.updateRecipientStatus, {
-              fanEmailId: recipient.fanEmailId || undefined,
-              email: recipient.email,
+              fanEmailId: recipient.fanEmailId,
               campaignId,
               status: "failed",
               errorMessage: error instanceof Error ? error.message : "Unknown error",
@@ -834,32 +817,6 @@ export const getCampaignRecipients = internalQuery({
     audienceTags: v.optional(v.array(v.string())),
   },
   async handler(ctx, { actorProfileId, audienceType }) {
-    // Handle "all_filmmakers" audience type - pulls from users table
-    if (audienceType === "all_filmmakers") {
-      const users = await ctx.db.query("users").collect();
-
-      // Filter to users who have created actor profiles (i.e., filmmakers)
-      const filmmakerUsers = [];
-      for (const user of users) {
-        const hasProfile = await ctx.db
-          .query("actor_profiles")
-          .withIndex("by_user", (q) => q.eq("userId", user._id))
-          .first();
-        if (hasProfile && user.email) {
-          filmmakerUsers.push(user);
-        }
-      }
-
-      return filmmakerUsers.map((u) => ({
-        fanEmailId: null as unknown as Id<"fan_emails">, // Using null for user-based recipients
-        userId: u._id,
-        email: u.email,
-        name: u.name || u.displayName,
-        unsubscribeToken: undefined,
-        isUserBased: true,
-      }));
-    }
-
     let subscribers: Doc<"fan_emails">[] = [];
 
     if (audienceType === "creator_subscribers") {
@@ -879,11 +836,9 @@ export const getCampaignRecipients = internalQuery({
 
     return validSubscribers.map((s) => ({
       fanEmailId: s._id,
-      userId: null as unknown as Id<"users">,
       email: s.email,
       name: s.name,
       unsubscribeToken: s.unsubscribeToken,
-      isUserBased: false,
     }));
   },
 });
@@ -893,12 +848,10 @@ export const createRecipientRecords = internalMutation({
     campaignId: v.id("email_campaigns"),
     recipients: v.array(
       v.object({
-        fanEmailId: v.optional(v.id("fan_emails")),
-        userId: v.optional(v.id("users")),
+        fanEmailId: v.id("fan_emails"),
         email: v.string(),
         name: v.optional(v.string()),
         unsubscribeToken: v.optional(v.string()),
-        isUserBased: v.optional(v.boolean()),
       })
     ),
   },
@@ -906,46 +859,33 @@ export const createRecipientRecords = internalMutation({
     const now = Date.now();
 
     for (const recipient of recipients) {
-      // Only insert if we have a valid fanEmailId (user-based recipients are tracked separately)
-      if (recipient.fanEmailId) {
-        await ctx.db.insert("campaign_recipients", {
-          campaignId,
-          fanEmailId: recipient.fanEmailId,
-          email: recipient.email,
-          name: recipient.name,
-          status: "pending",
-          createdAt: now,
-        });
-      }
+      await ctx.db.insert("campaign_recipients", {
+        campaignId,
+        fanEmailId: recipient.fanEmailId,
+        email: recipient.email,
+        name: recipient.name,
+        status: "pending",
+        createdAt: now,
+      });
     }
   },
 });
 
 export const updateRecipientStatus = internalMutation({
   args: {
-    fanEmailId: v.optional(v.id("fan_emails")),
-    email: v.optional(v.string()),
+    fanEmailId: v.id("fan_emails"),
     campaignId: v.id("email_campaigns"),
     status: v.string(),
     resendEmailId: v.optional(v.string()),
     errorMessage: v.optional(v.string()),
   },
-  async handler(ctx, { fanEmailId, email, campaignId, status, resendEmailId, errorMessage }) {
-    // Find the recipient record - by fanEmailId if available, otherwise by email
-    let recipient;
-    if (fanEmailId) {
-      recipient = await ctx.db
-        .query("campaign_recipients")
-        .withIndex("by_campaign", (q) => q.eq("campaignId", campaignId))
-        .filter((q) => q.eq(q.field("fanEmailId"), fanEmailId))
-        .first();
-    } else if (email) {
-      recipient = await ctx.db
-        .query("campaign_recipients")
-        .withIndex("by_campaign", (q) => q.eq("campaignId", campaignId))
-        .filter((q) => q.eq(q.field("email"), email))
-        .first();
-    }
+  async handler(ctx, { fanEmailId, campaignId, status, resendEmailId, errorMessage }) {
+    // Find the recipient record
+    const recipient = await ctx.db
+      .query("campaign_recipients")
+      .withIndex("by_campaign", (q) => q.eq("campaignId", campaignId))
+      .filter((q) => q.eq(q.field("fanEmailId"), fanEmailId))
+      .first();
 
     if (recipient) {
       await ctx.db.patch(recipient._id, {
@@ -956,8 +896,8 @@ export const updateRecipientStatus = internalMutation({
       });
     }
 
-    // Update fan_email engagement tracking (only for fan-based recipients with valid fanEmailId)
-    if (status === "sent" && fanEmailId) {
+    // Update fan_email engagement tracking
+    if (status === "sent") {
       const fanEmail = await ctx.db.get(fanEmailId);
       if (fanEmail) {
         await ctx.db.patch(fanEmailId, {
