@@ -27,6 +27,15 @@ import {
   Inbox,
   MousePointer,
   PieChart as PieChartIcon,
+  Globe,
+  UserPlus,
+  UserMinus,
+  ArrowRight,
+  Smartphone,
+  Monitor,
+  Tablet,
+  Link2,
+  Clock,
 } from "lucide-react";
 import {
   XAxis,
@@ -45,7 +54,7 @@ import {
 } from "recharts";
 
 type FilmCountFilter = "one" | "multiple" | undefined;
-type TabType = "overview" | "engagement" | "emails" | "pages" | "events";
+type TabType = "overview" | "engagement" | "emails" | "pages" | "events" | "platform";
 
 const COLORS = ["#6366f1", "#8b5cf6", "#ec4899", "#f43f5e", "#f97316", "#eab308", "#22c55e", "#14b8a6"];
 
@@ -79,6 +88,9 @@ export default function AdminAnalyticsPage() {
 
   // Fetch page-by-page analytics
   const pageAnalytics = useQuery(api.analytics.getPageByPageAnalyticsAdmin, { daysBack });
+
+  // Fetch platform analytics
+  const platformAnalytics = useQuery(api.analytics.getPlatformAnalyticsAdmin, { daysBack });
 
   // Fetch analytics with filters (existing) - preserved for future filtered views
   const _analytics = useQuery(api.analytics.getDeepAnalyticsAdmin, {
@@ -129,6 +141,7 @@ export default function AdminAnalyticsPage() {
   // Tab content
   const tabs: { key: TabType; label: string; icon: React.ReactNode }[] = [
     { key: "overview", label: "Overview", icon: <BarChart3 className="h-4 w-4" /> },
+    { key: "platform", label: "Platform", icon: <Globe className="h-4 w-4" /> },
     { key: "engagement", label: "Engagement", icon: <Activity className="h-4 w-4" /> },
     { key: "emails", label: "Fan Emails", icon: <Mail className="h-4 w-4" /> },
     { key: "pages", label: "Pages", icon: <Eye className="h-4 w-4" /> },
@@ -596,6 +609,359 @@ export default function AdminAnalyticsPage() {
                   <div className="text-sm text-slate-500 dark:text-slate-400">
                     +{siteStats?.bookingInquiries.thisWeek ?? 0} this week
                   </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* PLATFORM TAB */}
+          {activeTab === "platform" && platformAnalytics && (
+            <div className="space-y-6">
+              {/* User Status Breakdown */}
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                <StatCard
+                  label="Total Users"
+                  value={platformAnalytics.userCounts.total}
+                  icon={<Users className="h-5 w-5 text-indigo-500" />}
+                  color="indigo"
+                />
+                <StatCard
+                  label="With Profile"
+                  value={platformAnalytics.userCounts.withProfile}
+                  subValue={`${platformAnalytics.userCounts.completionRate}% of users`}
+                  icon={<UserCheck className="h-5 w-5 text-green-500" />}
+                  color="green"
+                />
+                <StatCard
+                  label="Without Profile"
+                  value={platformAnalytics.userCounts.withoutProfile}
+                  subValue={`+${platformAnalytics.userCounts.withoutProfileThisMonth} this period`}
+                  icon={<UserMinus className="h-5 w-5 text-amber-500" />}
+                  color="amber"
+                />
+                <StatCard
+                  label="Site-Wide Events"
+                  value={platformAnalytics.siteWideEvents.total}
+                  subValue={`${platformAnalytics.siteWideEvents.uniqueSessions} sessions`}
+                  icon={<Globe className="h-5 w-5 text-purple-500" />}
+                  color="purple"
+                />
+                <StatCard
+                  label="Completion Rate"
+                  value={platformAnalytics.userCounts.completionRate}
+                  subValue="Profile completion %"
+                  icon={<TrendingUp className="h-5 w-5 text-blue-500" />}
+                  color="blue"
+                />
+              </div>
+
+              {/* Onboarding Funnel */}
+              <div className="rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-900">
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                  <UserPlus className="h-5 w-5 text-indigo-500" />
+                  Onboarding Funnel (Last {daysBack} days)
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="text-center p-6 rounded-xl bg-gradient-to-br from-indigo-50 to-blue-50 dark:from-indigo-900/20 dark:to-blue-900/20 border border-indigo-100 dark:border-indigo-900/50">
+                    <div className="text-4xl font-bold text-indigo-600 dark:text-indigo-400">
+                      {platformAnalytics.onboardingFunnel.signups}
+                    </div>
+                    <div className="text-slate-700 dark:text-slate-300 font-medium mt-1">Signups</div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-2">New user registrations</div>
+                  </div>
+                  <div className="relative">
+                    <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-4 hidden md:block">
+                      <ArrowRight className="h-6 w-6 text-slate-300 dark:text-slate-600" />
+                    </div>
+                    <div className="text-center p-6 rounded-xl bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 border border-purple-100 dark:border-purple-900/50">
+                      <div className="text-4xl font-bold text-purple-600 dark:text-purple-400">
+                        {platformAnalytics.onboardingFunnel.onboardingCompleted}
+                      </div>
+                      <div className="text-slate-700 dark:text-slate-300 font-medium mt-1">Onboarding Done</div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+                        {platformAnalytics.onboardingFunnel.signupToOnboarding}% conversion
+                      </div>
+                    </div>
+                  </div>
+                  <div className="relative">
+                    <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-4 hidden md:block">
+                      <ArrowRight className="h-6 w-6 text-slate-300 dark:text-slate-600" />
+                    </div>
+                    <div className="text-center p-6 rounded-xl bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border border-green-100 dark:border-green-900/50">
+                      <div className="text-4xl font-bold text-green-600 dark:text-green-400">
+                        {platformAnalytics.onboardingFunnel.profilesCreated}
+                      </div>
+                      <div className="text-slate-700 dark:text-slate-300 font-medium mt-1">Profiles Created</div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+                        {platformAnalytics.onboardingFunnel.overallConversion}% overall conversion
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Charts Row */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Site-Wide Events Trend */}
+                <div className="rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-900">
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5 text-purple-500" />
+                    Site-Wide Events Trend
+                  </h3>
+                  {platformAnalytics.siteWideEvents.dailyTrend.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={280}>
+                      <AreaChart data={platformAnalytics.siteWideEvents.dailyTrend}>
+                        <defs>
+                          <linearGradient id="siteWideGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3} />
+                            <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                        <XAxis
+                          dataKey="date"
+                          tick={{ fontSize: 12 }}
+                          tickFormatter={(value) => new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                        />
+                        <YAxis tick={{ fontSize: 12 }} />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: "#1e293b",
+                            border: "none",
+                            borderRadius: "8px",
+                            color: "#fff",
+                          }}
+                          labelFormatter={(value) => new Date(value).toLocaleDateString()}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="count"
+                          stroke="#8b5cf6"
+                          fill="url(#siteWideGradient)"
+                          strokeWidth={2}
+                          name="Events"
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-[280px] flex items-center justify-center text-slate-500">
+                      No site-wide events in this period
+                    </div>
+                  )}
+                </div>
+
+                {/* Device Breakdown */}
+                <div className="rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-900">
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                    <Smartphone className="h-5 w-5 text-blue-500" />
+                    Device Breakdown
+                  </h3>
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center gap-3">
+                      <Monitor className="h-8 w-8 text-blue-500" />
+                      <div>
+                        <div className="text-2xl font-bold text-slate-900 dark:text-white">
+                          {platformAnalytics.deviceBreakdown.desktop}
+                        </div>
+                        <div className="text-sm text-slate-500 dark:text-slate-400">Desktop</div>
+                      </div>
+                    </div>
+                    <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center gap-3">
+                      <Smartphone className="h-8 w-8 text-green-500" />
+                      <div>
+                        <div className="text-2xl font-bold text-slate-900 dark:text-white">
+                          {platformAnalytics.deviceBreakdown.mobile}
+                        </div>
+                        <div className="text-sm text-slate-500 dark:text-slate-400">Mobile</div>
+                      </div>
+                    </div>
+                    <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center gap-3">
+                      <Tablet className="h-8 w-8 text-purple-500" />
+                      <div>
+                        <div className="text-2xl font-bold text-slate-900 dark:text-white">
+                          {platformAnalytics.deviceBreakdown.tablet}
+                        </div>
+                        <div className="text-sm text-slate-500 dark:text-slate-400">Tablet</div>
+                      </div>
+                    </div>
+                    <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center gap-3">
+                      <Globe className="h-8 w-8 text-slate-400" />
+                      <div>
+                        <div className="text-2xl font-bold text-slate-900 dark:text-white">
+                          {platformAnalytics.deviceBreakdown.unknown}
+                        </div>
+                        <div className="text-sm text-slate-500 dark:text-slate-400">Unknown</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Non-Profile Events & Top Referrers */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Site-Wide Event Types */}
+                <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 overflow-hidden">
+                  <div className="p-4 border-b border-slate-200 dark:border-slate-700">
+                    <h3 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                      <MousePointer className="h-5 w-5 text-indigo-500" />
+                      Site-Wide Event Types
+                    </h3>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                      Events not tied to a profile (landing, auth, dashboard)
+                    </p>
+                  </div>
+                  <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+                    <table className="w-full">
+                      <thead className="bg-slate-50 dark:bg-slate-800 sticky top-0">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">
+                            Event Type
+                          </th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">
+                            Count
+                          </th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">
+                            %
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {platformAnalytics.siteWideEvents.breakdown.map((event, index) => (
+                          <tr key={event.type} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <div
+                                  className="w-3 h-3 rounded-full"
+                                  style={{ backgroundColor: COLORS[index % COLORS.length] }}
+                                />
+                                <span className="font-medium text-slate-900 dark:text-white">
+                                  {formatEventType(event.type)}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-center font-bold text-slate-900 dark:text-white">
+                              {event.count.toLocaleString()}
+                            </td>
+                            <td className="px-4 py-3 text-center text-slate-600 dark:text-slate-400">
+                              {platformAnalytics.siteWideEvents.total > 0
+                                ? ((event.count / platformAnalytics.siteWideEvents.total) * 100).toFixed(1)
+                                : 0}%
+                            </td>
+                          </tr>
+                        ))}
+                        {platformAnalytics.siteWideEvents.breakdown.length === 0 && (
+                          <tr>
+                            <td colSpan={3} className="px-4 py-8 text-center text-slate-500 dark:text-slate-400">
+                              No site-wide events in this period
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Top Referrers */}
+                <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 overflow-hidden">
+                  <div className="p-4 border-b border-slate-200 dark:border-slate-700">
+                    <h3 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                      <Link2 className="h-5 w-5 text-green-500" />
+                      Top Referrers
+                    </h3>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                      Traffic sources for non-profile pages
+                    </p>
+                  </div>
+                  <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+                    <table className="w-full">
+                      <thead className="bg-slate-50 dark:bg-slate-800 sticky top-0">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">
+                            Referrer
+                          </th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">
+                            Visits
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {platformAnalytics.topReferrers.map((ref) => (
+                          <tr key={ref.referrer} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                            <td className="px-4 py-3">
+                              <span className="font-medium text-slate-900 dark:text-white">
+                                {ref.referrer === "direct" ? "Direct / None" : ref.referrer}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-center font-bold text-slate-900 dark:text-white">
+                              {ref.count.toLocaleString()}
+                            </td>
+                          </tr>
+                        ))}
+                        {platformAnalytics.topReferrers.length === 0 && (
+                          <tr>
+                            <td colSpan={2} className="px-4 py-8 text-center text-slate-500 dark:text-slate-400">
+                              No referrer data available
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
+              {/* Incomplete Onboarding Users */}
+              <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 overflow-hidden">
+                <div className="p-4 border-b border-slate-200 dark:border-slate-700">
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                    <UserMinus className="h-5 w-5 text-amber-500" />
+                    Users Without Profile ({platformAnalytics.userCounts.withoutProfile} total)
+                  </h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                    Users who signed up but haven&apos;t created an actor profile (incomplete onboarding)
+                  </p>
+                </div>
+                <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+                  <table className="w-full">
+                    <thead className="bg-slate-50 dark:bg-slate-800 sticky top-0">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">
+                          Email
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">
+                          Name
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">
+                          Signed Up
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {platformAnalytics.incompleteOnboarding.map((user) => (
+                        <tr key={user._id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                          <td className="px-4 py-3">
+                            <span className="font-medium text-slate-900 dark:text-white">{user.email}</span>
+                          </td>
+                          <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
+                            {user.name || "-"}
+                          </td>
+                          <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
+                            <div className="flex items-center gap-1">
+                              <Clock className="h-3 w-3" />
+                              {new Date(user.createdAt).toLocaleDateString()}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                      {platformAnalytics.incompleteOnboarding.length === 0 && (
+                        <tr>
+                          <td colSpan={3} className="px-4 py-8 text-center text-slate-500 dark:text-slate-400">
+                            All users have completed their profiles!
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>
