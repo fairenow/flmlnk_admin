@@ -2497,3 +2497,181 @@ export const getPageByPageAnalyticsAdmin = query({
     };
   },
 });
+
+/**
+ * Get platform-level analytics for admin dashboard
+ * Includes: user onboarding funnel, non-profile page events, site-wide analytics
+ */
+export const getPlatformAnalyticsAdmin = query({
+  args: {
+    daysBack: v.optional(v.number()),
+  },
+  async handler(ctx, { daysBack = 30 }) {
+    // Admin authorization check
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+
+    const currentUser = await ctx.db
+      .query("users")
+      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
+      .unique();
+
+    if (!currentUser?.superadmin) throw new Error("Admin access required");
+
+    const now = Date.now();
+    const cutoff = now - daysBack * 24 * 60 * 60 * 1000;
+    const today = now - 24 * 60 * 60 * 1000;
+    const thisWeek = now - 7 * 24 * 60 * 60 * 1000;
+
+    // Fetch all data
+    const [users, profiles, events] = await Promise.all([
+      ctx.db.query("users").collect(),
+      ctx.db.query("actor_profiles").collect(),
+      ctx.db.query("analytics_events").collect(),
+    ]);
+
+    // User funnel analysis
+    const userIdsWithProfiles = new Set(profiles.map((p) => p.userId.toString()));
+    const usersWithProfile = users.filter((u) => userIdsWithProfiles.has(u._id.toString()));
+    const usersWithoutProfile = users.filter((u) => !userIdsWithProfiles.has(u._id.toString()));
+
+    // Recent users without profiles (incomplete onboarding)
+    const recentUsersWithoutProfile = usersWithoutProfile.filter(
+      (u) => u._creationTime >= cutoff
+    );
+
+    // Non-profile page events (events where actorProfileId is null/undefined)
+    const nonProfileEvents = events.filter((e) => !e.actorProfileId);
+    const recentNonProfileEvents = nonProfileEvents.filter((e) => e._creationTime >= cutoff);
+
+    // Site-wide event types (typically non-profile events like signup, landing, dashboard)
+    const siteWideEventTypes = [
+      "user_signup",
+      "onboarding_completed",
+      "profile_created",
+      // Landing/marketing page events
+      "page_view", // when no profile attached
+      // Dashboard events (typically no actorProfileId)
+    ];
+
+    // Categorize non-profile events by type
+    const nonProfileEventBreakdown: Record<string, number> = {};
+    for (const event of recentNonProfileEvents) {
+      nonProfileEventBreakdown[event.eventType] = (nonProfileEventBreakdown[event.eventType] || 0) + 1;
+    }
+
+    // Sort by count descending
+    const sortedNonProfileEvents = Object.entries(nonProfileEventBreakdown)
+      .map(([type, count]) => ({ type, count }))
+      .sort((a, b) => b.count - a.count);
+
+    // Calculate unique sessions for non-profile events
+    const nonProfileSessions = new Set(recentNonProfileEvents.map((e) => e.sessionId));
+
+    // Daily trend for non-profile events
+    const dailyNonProfileEvents: Record<string, number> = {};
+    for (const event of recentNonProfileEvents) {
+      const date = new Date(event._creationTime).toISOString().split("T")[0];
+      dailyNonProfileEvents[date] = (dailyNonProfileEvents[date] || 0) + 1;
+    }
+
+    const dailyTrend = Object.entries(dailyNonProfileEvents)
+      .map(([date, count]) => ({ date, count }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    // User email breakdown (users with vs without profile)
+    const usersWithProfileEmails = usersWithProfile.map((u) => ({
+      _id: u._id,
+      email: u.email,
+      name: u.name,
+      createdAt: u._creationTime,
+    }));
+
+    const usersWithoutProfileEmails = usersWithoutProfile
+      .sort((a, b) => b._creationTime - a._creationTime)
+      .slice(0, 50) // Last 50 for display
+      .map((u) => ({
+        _id: u._id,
+        email: u.email,
+        name: u.name,
+        createdAt: u._creationTime,
+      }));
+
+    // Onboarding funnel stats
+    const signupEvents = events.filter((e) => e.eventType === "user_signup");
+    const onboardingCompletedEvents = events.filter((e) => e.eventType === "onboarding_completed");
+    const profileCreatedEvents = events.filter((e) => e.eventType === "profile_created");
+
+    // Recent funnel stats
+    const recentSignups = signupEvents.filter((e) => e._creationTime >= cutoff).length;
+    const recentOnboardingCompleted = onboardingCompletedEvents.filter((e) => e._creationTime >= cutoff).length;
+    const recentProfilesCreated = profileCreatedEvents.filter((e) => e._creationTime >= cutoff).length;
+
+    // Device breakdown for non-profile events
+    const deviceBreakdown: Record<string, number> = { mobile: 0, desktop: 0, tablet: 0, unknown: 0 };
+    for (const event of recentNonProfileEvents) {
+      const device = event.metadata?.deviceType || "unknown";
+      deviceBreakdown[device] = (deviceBreakdown[device] || 0) + 1;
+    }
+
+    // Referrer breakdown for non-profile events
+    const referrerBreakdown: Record<string, number> = {};
+    for (const event of recentNonProfileEvents) {
+      const referrer = event.referrer || "direct";
+      const domain = referrer === "direct" ? "direct" : new URL(referrer).hostname.replace("www.", "");
+      referrerBreakdown[domain] = (referrerBreakdown[domain] || 0) + 1;
+    }
+
+    const topReferrers = Object.entries(referrerBreakdown)
+      .map(([referrer, count]) => ({ referrer, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
+    return {
+      period: `${daysBack} days`,
+
+      // User status breakdown
+      userCounts: {
+        total: users.length,
+        withProfile: usersWithProfile.length,
+        withoutProfile: usersWithoutProfile.length,
+        // Time-based for users with profile
+        withProfileToday: usersWithProfile.filter((u) => u._creationTime >= today).length,
+        withProfileThisWeek: usersWithProfile.filter((u) => u._creationTime >= thisWeek).length,
+        withProfileThisMonth: usersWithProfile.filter((u) => u._creationTime >= cutoff).length,
+        // Time-based for users without profile
+        withoutProfileToday: usersWithoutProfile.filter((u) => u._creationTime >= today).length,
+        withoutProfileThisWeek: usersWithoutProfile.filter((u) => u._creationTime >= thisWeek).length,
+        withoutProfileThisMonth: usersWithoutProfile.filter((u) => u._creationTime >= cutoff).length,
+        // Completion rate
+        completionRate: users.length > 0 ? Math.round((usersWithProfile.length / users.length) * 100) : 0,
+      },
+
+      // Onboarding funnel
+      onboardingFunnel: {
+        signups: recentSignups,
+        onboardingCompleted: recentOnboardingCompleted,
+        profilesCreated: recentProfilesCreated,
+        // Conversion rates
+        signupToOnboarding: recentSignups > 0 ? Math.round((recentOnboardingCompleted / recentSignups) * 100) : 0,
+        onboardingToProfile: recentOnboardingCompleted > 0 ? Math.round((recentProfilesCreated / recentOnboardingCompleted) * 100) : 0,
+        overallConversion: recentSignups > 0 ? Math.round((recentProfilesCreated / recentSignups) * 100) : 0,
+      },
+
+      // Non-profile page events (site-wide)
+      siteWideEvents: {
+        total: recentNonProfileEvents.length,
+        uniqueSessions: nonProfileSessions.size,
+        breakdown: sortedNonProfileEvents,
+        dailyTrend,
+      },
+
+      // Device and referrer breakdown
+      deviceBreakdown,
+      topReferrers,
+
+      // Recent users without profiles (incomplete onboarding)
+      incompleteOnboarding: usersWithoutProfileEmails,
+    };
+  },
+});
