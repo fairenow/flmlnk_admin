@@ -1560,7 +1560,7 @@ export default defineSchema({
   // Campaign recipients - Track individual email sends
   campaign_recipients: defineTable({
     campaignId: v.id("email_campaigns"),
-    fanEmailId: v.id("fan_emails"),
+    fanEmailId: v.optional(v.id("fan_emails")), // Optional for incomplete_onboarding audience
 
     // Recipient info (denormalized for performance)
     email: v.string(),
