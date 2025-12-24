@@ -1560,7 +1560,7 @@ export default defineSchema({
   // Campaign recipients - Track individual email sends
   campaign_recipients: defineTable({
     campaignId: v.id("email_campaigns"),
-    fanEmailId: v.optional(v.id("fan_emails")), // Optional for incomplete_onboarding audience
+    fanEmailId: v.id("fan_emails"),
 
     // Recipient info (denormalized for performance)
     email: v.string(),
@@ -3123,4 +3123,75 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.optional(v.number()),
   }).index("by_trailerJob", ["trailerJobId"]),
+
+  // ============================================
+  // PLATFORM CAMPAIGNS (Admin-only)
+  // For sending emails to users without fan_emails (e.g., incomplete onboarding)
+  // ============================================
+
+  // Platform campaigns - Admin-to-user communications
+  platform_campaigns: defineTable({
+    // Campaign identity
+    name: v.string(),
+    subject: v.string(),
+    htmlContent: v.string(),
+    textContent: v.string(),
+
+    // Sender info
+    fromName: v.string(),
+    replyTo: v.optional(v.string()),
+
+    // Audience targeting
+    audienceType: v.string(), // "incomplete_onboarding", "all_users", "no_profile"
+
+    // Status
+    status: v.string(), // "draft", "sending", "sent", "failed"
+
+    // Stats (denormalized for quick access)
+    totalRecipients: v.optional(v.number()),
+    sentCount: v.optional(v.number()),
+    deliveredCount: v.optional(v.number()),
+    failedCount: v.optional(v.number()),
+    bouncedCount: v.optional(v.number()),
+
+    // Timestamps
+    scheduledAt: v.optional(v.number()),
+    sentAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+
+    // Admin who created
+    createdBy: v.string(), // admin userId
+  })
+    .index("by_status", ["status"])
+    .index("by_createdAt", ["createdAt"])
+    .index("by_audienceType", ["audienceType"]),
+
+  // Platform campaign recipients - Track individual sends
+  platform_campaign_recipients: defineTable({
+    campaignId: v.id("platform_campaigns"),
+
+    // Recipient info
+    email: v.string(),
+    name: v.optional(v.string()),
+    authUserId: v.optional(v.string()), // betterAuth user ID
+    userId: v.optional(v.id("users")), // App user ID if exists
+
+    // Delivery status
+    status: v.string(), // "pending", "sent", "delivered", "bounced", "failed"
+    resendEmailId: v.optional(v.string()),
+
+    // Error tracking
+    errorMessage: v.optional(v.string()),
+
+    // Timestamps
+    sentAt: v.optional(v.number()),
+    deliveredAt: v.optional(v.number()),
+    bouncedAt: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_campaign", ["campaignId"])
+    .index("by_email", ["email"])
+    .index("by_campaign_status", ["campaignId", "status"]),
 });
