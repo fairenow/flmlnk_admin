@@ -555,7 +555,7 @@ interface CampaignSendResult {
 
 // Recipient type for email sending
 interface CampaignRecipient {
-  fanEmailId?: Id<"fan_emails">; // Optional for incomplete_onboarding audience
+  fanEmailId: Id<"fan_emails">;
   email: string;
   name?: string;
   unsubscribeToken?: string;
@@ -714,7 +714,6 @@ export const executeCampaignSend = internalAction({
             if (result.error) {
               await ctx.runMutation(internal.campaigns.updateRecipientStatus, {
                 fanEmailId: recipient.fanEmailId,
-                email: recipient.email,
                 campaignId,
                 status: "failed",
                 errorMessage: result.error.message,
@@ -723,7 +722,6 @@ export const executeCampaignSend = internalAction({
             } else {
               await ctx.runMutation(internal.campaigns.updateRecipientStatus, {
                 fanEmailId: recipient.fanEmailId,
-                email: recipient.email,
                 campaignId,
                 status: "sent",
                 resendEmailId: result.data?.id,
@@ -733,7 +731,6 @@ export const executeCampaignSend = internalAction({
           } catch (error) {
             await ctx.runMutation(internal.campaigns.updateRecipientStatus, {
               fanEmailId: recipient.fanEmailId,
-              email: recipient.email,
               campaignId,
               status: "failed",
               errorMessage: error instanceof Error ? error.message : "Unknown error",
@@ -820,21 +817,6 @@ export const getCampaignRecipients = internalQuery({
     audienceTags: v.optional(v.array(v.string())),
   },
   async handler(ctx, { actorProfileId, audienceType }) {
-    // Handle incomplete_onboarding audience type
-    if (audienceType === "incomplete_onboarding") {
-      const incompleteUsers = await ctx.runQuery(
-        internal.adminCampaigns.getIncompleteOnboardingRecipients,
-        {}
-      );
-
-      return incompleteUsers.map((user) => ({
-        fanEmailId: undefined, // No fan_email record for these users
-        email: user.email,
-        name: user.name,
-        unsubscribeToken: undefined, // They can unsubscribe via account settings
-      }));
-    }
-
     let subscribers: Doc<"fan_emails">[] = [];
 
     if (audienceType === "creator_subscribers") {
@@ -866,7 +848,7 @@ export const createRecipientRecords = internalMutation({
     campaignId: v.id("email_campaigns"),
     recipients: v.array(
       v.object({
-        fanEmailId: v.optional(v.id("fan_emails")), // Optional for incomplete_onboarding audience
+        fanEmailId: v.id("fan_emails"),
         email: v.string(),
         name: v.optional(v.string()),
         unsubscribeToken: v.optional(v.string()),
@@ -891,30 +873,19 @@ export const createRecipientRecords = internalMutation({
 
 export const updateRecipientStatus = internalMutation({
   args: {
-    fanEmailId: v.optional(v.id("fan_emails")), // Optional for incomplete_onboarding audience
-    email: v.string(), // Used as fallback identifier when fanEmailId is not available
+    fanEmailId: v.id("fan_emails"),
     campaignId: v.id("email_campaigns"),
     status: v.string(),
     resendEmailId: v.optional(v.string()),
     errorMessage: v.optional(v.string()),
   },
-  async handler(ctx, { fanEmailId, email, campaignId, status, resendEmailId, errorMessage }) {
-    // Find the recipient record - by fanEmailId if available, otherwise by email
-    let recipient;
-    if (fanEmailId) {
-      recipient = await ctx.db
-        .query("campaign_recipients")
-        .withIndex("by_campaign", (q) => q.eq("campaignId", campaignId))
-        .filter((q) => q.eq(q.field("fanEmailId"), fanEmailId))
-        .first();
-    } else {
-      // Use email index for recipients without fanEmailId (incomplete_onboarding)
-      recipient = await ctx.db
-        .query("campaign_recipients")
-        .withIndex("by_email", (q) => q.eq("email", email))
-        .filter((q) => q.eq(q.field("campaignId"), campaignId))
-        .first();
-    }
+  async handler(ctx, { fanEmailId, campaignId, status, resendEmailId, errorMessage }) {
+    // Find the recipient record
+    const recipient = await ctx.db
+      .query("campaign_recipients")
+      .withIndex("by_campaign", (q) => q.eq("campaignId", campaignId))
+      .filter((q) => q.eq(q.field("fanEmailId"), fanEmailId))
+      .first();
 
     if (recipient) {
       await ctx.db.patch(recipient._id, {
@@ -925,8 +896,8 @@ export const updateRecipientStatus = internalMutation({
       });
     }
 
-    // Update fan_email engagement tracking (only if fanEmailId is available)
-    if (status === "sent" && fanEmailId) {
+    // Update fan_email engagement tracking
+    if (status === "sent") {
       const fanEmail = await ctx.db.get(fanEmailId);
       if (fanEmail) {
         await ctx.db.patch(fanEmailId, {

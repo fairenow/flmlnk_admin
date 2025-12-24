@@ -8,6 +8,7 @@ import {
   Settings,
   ChevronRight,
   Image as ImageIcon,
+  UserPlus,
 } from "lucide-react";
 
 export default function AdminPage() {
@@ -32,6 +33,13 @@ export default function AdminPage() {
       icon: ImageIcon,
       href: "/admin/assets",
       color: "from-purple-500 to-pink-600",
+    },
+    {
+      title: "Platform Campaigns",
+      description: "Send emails to users without profiles (incomplete onboarding, re-engagement)",
+      icon: UserPlus,
+      href: "/admin/platform-campaigns",
+      color: "from-blue-500 to-indigo-600",
     },
     {
       title: "Email Campaigns",
