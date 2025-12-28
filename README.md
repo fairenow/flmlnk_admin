@@ -1,6 +1,46 @@
-# FlmLnk + Convex Starter
+# FlmLnk Admin Portal
 
-This repository boots a Next.js App Router experience with a Convex backend and Better Auth wiring.
+This is the **admin site** for the FlmLnk platform. It provides administrative capabilities for managing users, campaigns, analytics, content generation, and platform-wide operations.
+
+## Architecture Overview
+
+### Shared Infrastructure, Separate Concerns
+
+The admin portal shares the same **Convex** and **Modal** infrastructure as the main user-facing site (`flmlnk`), but maintains strict separation through admin-specific implementations:
+
+| Layer | Shared | Admin-Specific |
+|-------|--------|----------------|
+| **Convex Backend** | Same deployment & database | Admin-prefixed tables, queries, and mutations |
+| **Modal Functions** | Same Modal project | Admin-specific service functions |
+| **Authentication** | Same auth system | Admin role validation & permissions |
+
+### Why This Approach?
+
+1. **Single Source of Truth**: Both sites read from the same database, ensuring data consistency
+2. **No User Impact**: Admin operations use dedicated tables/queries (e.g., `admin_analytics`, `adminGetUsers`) to avoid affecting user-side performance or functionality
+3. **Centralized Deployment**: Convex and Modal projects are built and deployed from the **main user repository** (`flmlnk`), with admin additions included there
+4. **Clear Boundaries**: Admin services are namespaced to prevent accidental cross-contamination
+
+### Admin-Specific Components
+
+The following are built as admin-specific implementations in the shared Convex/Modal projects:
+
+- **Emails**: Admin email campaigns, platform announcements, user notifications
+- **Boosts**: Campaign management, boost approval/rejection, analytics
+- **Analytics**: Platform-wide metrics, user behavior analysis, deep analytics
+- **Generation**: Admin content generation tools and templates
+- **User Management**: User lookup, moderation, support tools
+
+### For the User-Side Team
+
+When working on the main `flmlnk` repository, be aware that:
+
+1. **Convex schema** (`convex/schema.ts`) includes admin tables - these are prefixed with `admin_` or clearly documented
+2. **Convex functions** may include admin-specific files (e.g., `convex/admin/`) - these should not be modified without admin team coordination
+3. **Modal functions** may include admin endpoints - similarly namespaced and separated
+4. **Deployments** of Convex and Modal affect both user and admin sites - coordinate releases accordingly
+
+---
 
 ## Getting started
 
@@ -32,19 +72,40 @@ This repository boots a Next.js App Router experience with a Convex backend and 
    npm run dev
    ```
 
-## Convex wiring
+## Convex Wiring
 
-- The Convex schema (tables, indexes, and validators) lives at `convex/schema.ts`.
-- Start `npm run convex:dev` once to push the schema to your Convex deployment and generate `_generated` types.
-- When ready to deploy the backend changes, run `npm run convex:deploy`.
+> **Important**: The Convex backend is managed in the **main user repository** (`flmlnk`). This admin site connects to the same Convex deployment but does not manage the schema directly.
 
-### Tables defined today
+### Local Development
 
-- `users` keyed by `authId` for Better Auth identities.
-- `actor_profiles` connected to `users`, indexed by `slug` and `userId`.
-- `projects` and `clips` tied to each actor profile, plus `fan_emails` captured from fans.
-- `page_templates` for layout presets, `boost_campaigns` for paid campaigns, and `analytics_events` for tracked interactions.
-- `usage_daily_metrics` snapshot written by the scheduled cron job in `convex/crons.ts`.
+- This project syncs types from the shared Convex deployment using `npm run convex:dev`
+- **Do not modify** `convex/schema.ts` here - changes should be made in the main `flmlnk` repository
+- The `_generated` types are pulled from the shared deployment
+
+### Adding Admin Features
+
+When you need new admin functionality:
+
+1. **Schema changes**: Add admin-prefixed tables in the main `flmlnk` repo's `convex/schema.ts`
+2. **Queries/Mutations**: Create admin-specific functions in `convex/admin/` directory in the main repo
+3. **Deploy**: Run `npm run convex:deploy` from the main `flmlnk` repository
+4. **Sync**: Run `npm run convex:dev` here to pull updated types
+
+### Table Architecture
+
+**Shared Tables** (read-only from admin, defined in main repo):
+- `users` - User accounts and auth identities
+- `actor_profiles` - Creator profiles
+- `projects` and `clips` - User content
+- `fan_emails` - Fan subscriptions
+- `boost_campaigns` - User-created campaigns
+- `analytics_events` - User-side event tracking
+
+**Admin-Specific Tables** (managed via main repo, used by admin):
+- `admin_campaigns` - Platform-wide email campaigns
+- `admin_analytics_*` - Admin analytics and reporting
+- `admin_audit_log` - Admin action logging
+- Additional admin tables as needed (prefixed with `admin_`)
 
 ## Deploying to Vercel
 
@@ -77,9 +138,36 @@ Configure the following environment variables in your Vercel project settings:
 4. Set custom domain to `film.flmlnk.com` in Vercel project settings
 5. Deploy!
 
+## Modal Integration
+
+> **Important**: Like Convex, Modal functions are managed in the **main user repository** (`flmlnk`).
+
+### Admin Modal Services
+
+Admin-specific Modal functions should be created in the main repo with clear namespacing:
+
+- `admin_email_service.py` - Bulk email sending, campaign management
+- `admin_generation_service.py` - Admin content generation tools
+- `admin_analytics_service.py` - Heavy analytics processing
+
+### Calling Modal from Admin
+
+This admin site calls the same Modal endpoints as the user site. Admin functions are distinguished by:
+1. Function naming (prefixed with `admin_`)
+2. Admin authentication validation within the function
+3. Separate rate limits and quotas where applicable
+
+---
+
 ## Notes
 
-- Auth routes live under `app/api/auth/[...betterAuth]/route.ts`.
-- Convex functions and schema live in the `convex/` directory; regenerate `_generated` outputs with `npx convex dev`.
-- Update the placeholder homepage in `app/page.tsx` as product flows come online.
-- TypeScript type checking for Convex functions is handled separately by the Convex CLI to avoid build conflicts.
+- **Auth routes** live under `app/api/auth/[...betterAuth]/route.ts`
+- **Convex functions** are managed in the main `flmlnk` repo - run `npx convex dev` here only to sync types
+- **Modal functions** are similarly managed in the main `flmlnk` repo
+- **Admin permissions** should be validated on both the frontend and in Convex/Modal functions
+- TypeScript type checking for Convex functions is handled separately by the Convex CLI to avoid build conflicts
+
+## Related Repositories
+
+- **flmlnk** (main user site) - Contains the source of truth for Convex schema and Modal functions
+- **flmlnk_admin** (this repo) - Admin frontend that consumes the shared backend
