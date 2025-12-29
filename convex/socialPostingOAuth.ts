@@ -205,7 +205,7 @@ export const initiateOAuth = action({
     const clientId = process.env[envVars.clientIdVar];
     const redirectUri =
       process.env.SITE_URL + "/api/social/callback" ||
-      "https://film.flmlnk.com/api/social/callback";
+      "https://flmlnk.com/api/social/callback";
 
     if (!clientId) {
       throw new Error(`${config.name} is not configured. Missing client ID.`);

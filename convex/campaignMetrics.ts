@@ -323,7 +323,7 @@ export const recordCampaignEvent = internalMutation({
       }
 
       // Update fan_email engagement tracking
-      if (recipient && (args.eventType === "opened" || args.eventType === "clicked")) {
+      if (recipient && recipient.fanEmailId && (args.eventType === "opened" || args.eventType === "clicked")) {
         const fanEmail = await ctx.db.get(recipient.fanEmailId);
         if (fanEmail) {
           const fanUpdates: Partial<Doc<"fan_emails">> = {
@@ -346,7 +346,7 @@ export const recordCampaignEvent = internalMutation({
       // Handle hard bounce
       if (args.eventType === "bounced" && args.metadata?.bounce_type === "hard") {
         const recipient = await ctx.db.get(args.recipientId);
-        if (recipient) {
+        if (recipient && recipient.fanEmailId) {
           const fanEmail = await ctx.db.get(recipient.fanEmailId);
           if (fanEmail) {
             await ctx.db.patch(recipient.fanEmailId, {

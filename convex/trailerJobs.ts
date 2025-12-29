@@ -29,8 +29,10 @@ export const TRAILER_STATUS = {
   PROXY_GENERATING: "PROXY_GENERATING",
   TRANSCRIBING: "TRANSCRIBING",
   SCENE_DETECTING: "SCENE_DETECTING",
-  ANALYZING: "ANALYZING", // Additional AI passes
-  ANALYSIS_READY: "ANALYSIS_READY", // Scene map + transcript complete
+  CLASSIFYING_EARLY: "CLASSIFYING_EARLY", // Early film identity classification (first 60s)
+  ANALYZING: "ANALYZING", // Additional AI passes (scene scoring, dialogue selection)
+  CLASSIFYING_FULL: "CLASSIFYING_FULL", // Full film identity classification
+  ANALYSIS_READY: "ANALYSIS_READY", // Scene map + transcript + identity complete
 
   // Synthesis phase (can re-run without re-analyzing)
   PLANNING: "PLANNING", // GPT-4o generating timestamp plan
@@ -40,6 +42,8 @@ export const TRAILER_STATUS = {
   AUDIO_PLANNING: "AUDIO_PLANNING", // Analyzing for rise/impact points
   MUSIC_GENERATING: "MUSIC_GENERATING", // ElevenLabs music generation
   SFX_GENERATING: "SFX_GENERATING", // ElevenLabs SFX (impacts, risers, whooshes)
+  TITLE_CARDS: "TITLE_CARDS", // Generating designed title card clips with dark backgrounds
+  VO_GENERATING: "VO_GENERATING", // ElevenLabs TTS voiceover generation (if enabled by genre)
   AUDIO_READY: "AUDIO_READY", // Music and SFX generated and ready
   MIXING: "MIXING", // Mixing dialogue + music + SFX layers
 
@@ -657,6 +661,7 @@ export const createTextCardPlan = internalMutation({
         motion: v.string(),
         fontSize: v.optional(v.number()),
         position: v.optional(v.string()),
+        purpose: v.optional(v.string()), // "hook", "stakes", "button", etc.
       })
     ),
     aiReasoning: v.optional(v.string()),
@@ -729,6 +734,192 @@ export const createAudioPlan = internalMutation({
     });
 
     return planId;
+  },
+});
+
+/**
+ * Create film identity classification result
+ */
+export const createFilmIdentity = internalMutation({
+  args: {
+    jobId: v.id("trailer_jobs"),
+    primaryGenre: v.string(),
+    secondaryGenres: v.array(v.string()),
+    tone: v.string(),
+    themes: v.array(v.string()),
+    message: v.optional(v.string()),
+    archetype: v.optional(v.string()),
+    spoilerSensitivity: v.number(),
+    confidence: v.number(),
+    evidence: v.array(
+      v.object({
+        type: v.string(),
+        timestamp: v.optional(v.number()),
+        note: v.string(),
+        signalStrength: v.number(),
+      })
+    ),
+    classificationStage: v.string(),
+    extractedSignals: v.optional(v.any()),
+  },
+  handler: async (ctx, args) => {
+    // Check if there's already an identity for this job
+    const existing = await ctx.db
+      .query("trailer_film_identities")
+      .withIndex("by_trailerJob", (q) => q.eq("trailerJobId", args.jobId))
+      .first();
+
+    if (existing) {
+      // Update existing identity
+      await ctx.db.patch(existing._id, {
+        primaryGenre: args.primaryGenre,
+        secondaryGenres: args.secondaryGenres,
+        tone: args.tone,
+        themes: args.themes,
+        message: args.message,
+        archetype: args.archetype,
+        spoilerSensitivity: args.spoilerSensitivity,
+        confidence: args.confidence,
+        evidence: args.evidence,
+        classificationStage: args.classificationStage,
+        extractedSignals: args.extractedSignals
+          ? {
+              transcriptSignals: args.extractedSignals.transcript,
+              visualSignals: args.extractedSignals.visual,
+              audioSignals: args.extractedSignals.audio,
+              structuralSignals: args.extractedSignals.structural,
+            }
+          : undefined,
+        updatedAt: Date.now(),
+      });
+
+      return existing._id;
+    }
+
+    // Create new identity
+    const identityId = await ctx.db.insert("trailer_film_identities", {
+      trailerJobId: args.jobId,
+      primaryGenre: args.primaryGenre,
+      secondaryGenres: args.secondaryGenres,
+      tone: args.tone,
+      themes: args.themes,
+      message: args.message,
+      archetype: args.archetype,
+      spoilerSensitivity: args.spoilerSensitivity,
+      confidence: args.confidence,
+      evidence: args.evidence,
+      classificationStage: args.classificationStage,
+      extractedSignals: args.extractedSignals
+        ? {
+            transcriptSignals: args.extractedSignals.transcript,
+            visualSignals: args.extractedSignals.visual,
+            audioSignals: args.extractedSignals.audio,
+            structuralSignals: args.extractedSignals.structural,
+          }
+        : undefined,
+      createdAt: Date.now(),
+    });
+
+    // Link to job
+    await ctx.db.patch(args.jobId, {
+      filmIdentityId: identityId,
+      updatedAt: Date.now(),
+    });
+
+    return identityId;
+  },
+});
+
+/**
+ * Create or update narration plan for a trailer job
+ */
+export const createNarrationPlan = internalMutation({
+  args: {
+    jobId: v.id("trailer_jobs"),
+    profileId: v.optional(v.id("trailer_profiles")),
+    narrationEnabled: v.boolean(),
+    policyReason: v.string(),
+    template: v.string(),
+    voicePersona: v.string(),
+    script: v.array(
+      v.object({
+        lineIndex: v.number(),
+        text: v.string(),
+        startSec: v.number(),
+        endSec: v.number(),
+        purpose: v.string(),
+      })
+    ),
+    timingAnchors: v.array(
+      v.object({
+        anchorType: v.string(),
+        atSec: v.number(),
+        description: v.string(),
+      })
+    ),
+    totalVoDuration: v.number(),
+  },
+  handler: async (ctx, args) => {
+    // Check if there's already a narration plan for this job
+    const existing = await ctx.db
+      .query("trailer_narration_plans")
+      .withIndex("by_trailerJob", (q) => q.eq("trailerJobId", args.jobId))
+      .first();
+
+    if (existing) {
+      // Update existing plan
+      await ctx.db.patch(existing._id, {
+        profileId: args.profileId,
+        narrationEnabled: args.narrationEnabled,
+        policyReason: args.policyReason,
+        template: args.template,
+        voicePersona: args.voicePersona,
+        script: args.script,
+        timingAnchors: args.timingAnchors,
+        totalVoDuration: args.totalVoDuration,
+      });
+
+      return existing._id;
+    }
+
+    // Create new narration plan
+    const planId = await ctx.db.insert("trailer_narration_plans", {
+      trailerJobId: args.jobId,
+      profileId: args.profileId,
+      narrationEnabled: args.narrationEnabled,
+      policyReason: args.policyReason,
+      template: args.template,
+      voicePersona: args.voicePersona,
+      script: args.script,
+      timingAnchors: args.timingAnchors,
+      totalVoDuration: args.totalVoDuration,
+      createdAt: Date.now(),
+    });
+
+    // Link to job
+    await ctx.db.patch(args.jobId, {
+      narrationPlanId: planId,
+      updatedAt: Date.now(),
+    });
+
+    return planId;
+  },
+});
+
+/**
+ * Update narration plan with generated VO audio
+ */
+export const updateNarrationPlanAudio = internalMutation({
+  args: {
+    planId: v.id("trailer_narration_plans"),
+    audioR2Key: v.string(),
+    audioDurationSec: v.number(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.planId, {
+      audioR2Key: args.audioR2Key,
+      audioDurationSec: args.audioDurationSec,
+    });
   },
 });
 
@@ -1103,6 +1294,7 @@ export const httpCreateTextCardPlan = action({
         motion: v.string(),
         fontSize: v.optional(v.number()),
         position: v.optional(v.string()),
+        purpose: v.optional(v.string()), // "hook", "stakes", "button", etc.
       })
     ),
     aiReasoning: v.optional(v.string()),
@@ -1166,6 +1358,140 @@ export const httpCreateAudioPlan = action({
     });
 
     return { planId };
+  },
+});
+
+/**
+ * HTTP action to create film identity classification
+ */
+export const httpCreateFilmIdentity = action({
+  args: {
+    jobId: v.string(),
+    primaryGenre: v.string(),
+    secondaryGenres: v.array(v.string()),
+    tone: v.string(),
+    themes: v.array(v.string()),
+    message: v.optional(v.string()),
+    archetype: v.optional(v.string()),
+    spoilerSensitivity: v.number(),
+    confidence: v.number(),
+    evidence: v.array(
+      v.object({
+        type: v.string(),
+        timestamp: v.optional(v.number()),
+        note: v.string(),
+        signalStrength: v.number(),
+      })
+    ),
+    classificationStage: v.string(),
+    extractedSignals: v.optional(v.any()),
+    webhookSecret: v.optional(v.string()),
+  },
+  handler: async (
+    ctx,
+    args
+  ): Promise<{ identityId: Id<"trailer_film_identities"> }> => {
+    verifyWebhookSecret(args.webhookSecret);
+
+    const identityId = await ctx.runMutation(
+      internal.trailerJobs.createFilmIdentity,
+      {
+        jobId: args.jobId as Id<"trailer_jobs">,
+        primaryGenre: args.primaryGenre,
+        secondaryGenres: args.secondaryGenres,
+        tone: args.tone,
+        themes: args.themes,
+        message: args.message,
+        archetype: args.archetype,
+        spoilerSensitivity: args.spoilerSensitivity,
+        confidence: args.confidence,
+        evidence: args.evidence,
+        classificationStage: args.classificationStage,
+        extractedSignals: args.extractedSignals,
+      }
+    );
+
+    return { identityId };
+  },
+});
+
+/**
+ * HTTP action to create narration plan
+ */
+export const httpCreateNarrationPlan = action({
+  args: {
+    jobId: v.string(),
+    profileId: v.optional(v.string()),
+    narrationEnabled: v.boolean(),
+    policyReason: v.string(),
+    template: v.string(),
+    voicePersona: v.string(),
+    script: v.array(
+      v.object({
+        lineIndex: v.number(),
+        text: v.string(),
+        startSec: v.number(),
+        endSec: v.number(),
+        purpose: v.string(),
+      })
+    ),
+    timingAnchors: v.array(
+      v.object({
+        anchorType: v.string(),
+        atSec: v.number(),
+        description: v.string(),
+      })
+    ),
+    totalVoDuration: v.number(),
+    webhookSecret: v.optional(v.string()),
+  },
+  handler: async (
+    ctx,
+    args
+  ): Promise<{ planId: Id<"trailer_narration_plans"> }> => {
+    verifyWebhookSecret(args.webhookSecret);
+
+    const planId = await ctx.runMutation(
+      internal.trailerJobs.createNarrationPlan,
+      {
+        jobId: args.jobId as Id<"trailer_jobs">,
+        profileId: args.profileId
+          ? (args.profileId as Id<"trailer_profiles">)
+          : undefined,
+        narrationEnabled: args.narrationEnabled,
+        policyReason: args.policyReason,
+        template: args.template,
+        voicePersona: args.voicePersona,
+        script: args.script,
+        timingAnchors: args.timingAnchors,
+        totalVoDuration: args.totalVoDuration,
+      }
+    );
+
+    return { planId };
+  },
+});
+
+/**
+ * HTTP action to update narration plan with generated VO audio
+ */
+export const httpUpdateNarrationPlanAudio = action({
+  args: {
+    planId: v.string(),
+    audioR2Key: v.string(),
+    audioDurationSec: v.number(),
+    webhookSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<{ success: boolean }> => {
+    verifyWebhookSecret(args.webhookSecret);
+
+    await ctx.runMutation(internal.trailerJobs.updateNarrationPlanAudio, {
+      planId: args.planId as Id<"trailer_narration_plans">,
+      audioR2Key: args.audioR2Key,
+      audioDurationSec: args.audioDurationSec,
+    });
+
+    return { success: true };
   },
 });
 
@@ -1346,5 +1672,493 @@ export const httpGetJobDetails = action({
       videoJob,
       profile,
     };
+  },
+});
+
+// ============================================
+// PHASE 6: EFFECTS PLAN
+// ============================================
+
+/**
+ * Create effects plan (Phase 6: transitions, speed effects, flash frames)
+ */
+export const createEffectsPlan = internalMutation({
+  args: {
+    jobId: v.id("trailer_jobs"),
+    profileId: v.id("trailer_profiles"),
+    transitions: v.array(
+      v.object({
+        fromClipIndex: v.number(),
+        toClipIndex: v.number(),
+        transitionType: v.string(),
+        duration: v.number(),
+        offset: v.number(),
+        isBeatAligned: v.boolean(),
+      })
+    ),
+    speedEffects: v.array(
+      v.object({
+        effectIndex: v.number(),
+        effectType: v.string(),
+        startTime: v.number(),
+        endTime: v.number(),
+        speedFactor: v.optional(v.number()),
+        rampInDuration: v.optional(v.number()),
+        rampOutDuration: v.optional(v.number()),
+        startSpeed: v.optional(v.number()),
+        endSpeed: v.optional(v.number()),
+        easing: v.optional(v.string()),
+      })
+    ),
+    flashFrames: v.array(
+      v.object({
+        flashIndex: v.number(),
+        timestamp: v.number(),
+        duration: v.number(),
+        color: v.string(),
+        intensity: v.number(),
+        fadeIn: v.optional(v.number()),
+        fadeOut: v.optional(v.number()),
+      })
+    ),
+    totalTransitions: v.number(),
+    totalSpeedEffects: v.number(),
+    totalFlashFrames: v.number(),
+    aiReasoning: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const planId = await ctx.db.insert("trailer_effects_plans", {
+      trailerJobId: args.jobId,
+      profileId: args.profileId,
+      transitions: args.transitions,
+      speedEffects: args.speedEffects,
+      flashFrames: args.flashFrames,
+      totalTransitions: args.totalTransitions,
+      totalSpeedEffects: args.totalSpeedEffects,
+      totalFlashFrames: args.totalFlashFrames,
+      aiReasoning: args.aiReasoning,
+      createdAt: Date.now(),
+    });
+
+    await ctx.db.patch(args.jobId, {
+      effectsPlanId: planId,
+      updatedAt: Date.now(),
+    });
+
+    return planId;
+  },
+});
+
+/**
+ * HTTP action to create effects plan
+ */
+export const httpCreateEffectsPlan = action({
+  args: {
+    jobId: v.string(),
+    profileId: v.string(),
+    transitions: v.array(
+      v.object({
+        fromClipIndex: v.number(),
+        toClipIndex: v.number(),
+        transitionType: v.string(),
+        duration: v.number(),
+        offset: v.number(),
+        isBeatAligned: v.boolean(),
+      })
+    ),
+    speedEffects: v.array(
+      v.object({
+        effectIndex: v.number(),
+        effectType: v.string(),
+        startTime: v.number(),
+        endTime: v.number(),
+        speedFactor: v.optional(v.number()),
+        rampInDuration: v.optional(v.number()),
+        rampOutDuration: v.optional(v.number()),
+        startSpeed: v.optional(v.number()),
+        endSpeed: v.optional(v.number()),
+        easing: v.optional(v.string()),
+      })
+    ),
+    flashFrames: v.array(
+      v.object({
+        flashIndex: v.number(),
+        timestamp: v.number(),
+        duration: v.number(),
+        color: v.string(),
+        intensity: v.number(),
+        fadeIn: v.optional(v.number()),
+        fadeOut: v.optional(v.number()),
+      })
+    ),
+    totalTransitions: v.number(),
+    totalSpeedEffects: v.number(),
+    totalFlashFrames: v.number(),
+    aiReasoning: v.optional(v.string()),
+    webhookSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<{ planId: Id<"trailer_effects_plans"> }> => {
+    verifyWebhookSecret(args.webhookSecret);
+
+    const planId = await ctx.runMutation(internal.trailerJobs.createEffectsPlan, {
+      jobId: args.jobId as Id<"trailer_jobs">,
+      profileId: args.profileId as Id<"trailer_profiles">,
+      transitions: args.transitions,
+      speedEffects: args.speedEffects,
+      flashFrames: args.flashFrames,
+      totalTransitions: args.totalTransitions,
+      totalSpeedEffects: args.totalSpeedEffects,
+      totalFlashFrames: args.totalFlashFrames,
+      aiReasoning: args.aiReasoning,
+    });
+
+    return { planId };
+  },
+});
+
+// ============================================
+// PHASE 8: WORKFLOW PLAN
+// ============================================
+
+/**
+ * Create workflow plan (Phase 8: timeline snapshot, previews, exports)
+ */
+export const createWorkflowPlan = internalMutation({
+  args: {
+    jobId: v.id("trailer_jobs"),
+    profileId: v.id("trailer_profiles"),
+    clips: v.array(
+      v.object({
+        clipIndex: v.number(),
+        sceneIndex: v.number(),
+        sourceStart: v.number(),
+        sourceEnd: v.number(),
+        targetStart: v.number(),
+        targetEnd: v.number(),
+        userModified: v.optional(v.boolean()),
+        userAdded: v.optional(v.boolean()),
+      })
+    ),
+    textCards: v.array(
+      v.object({
+        cardIndex: v.number(),
+        atSec: v.number(),
+        durationSec: v.number(),
+        text: v.string(),
+        style: v.string(),
+        motion: v.string(),
+        position: v.string(),
+        userModified: v.optional(v.boolean()),
+        userAdded: v.optional(v.boolean()),
+      })
+    ),
+    calculatedDuration: v.number(),
+    targetDuration: v.number(),
+    effectsPlanId: v.optional(v.id("trailer_effects_plans")),
+    overlayPlanId: v.optional(v.id("trailer_overlay_plans")),
+    audioPlanId: v.optional(v.id("trailer_audio_plans")),
+    previewQuality: v.optional(v.string()),
+    previewR2Key: v.optional(v.string()),
+    recommendedExports: v.array(
+      v.object({
+        quality: v.string(),
+        format: v.string(),
+        label: v.string(),
+        description: v.string(),
+      })
+    ),
+    revision: v.number(),
+    parentRevision: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const planId = await ctx.db.insert("trailer_workflow_plans", {
+      trailerJobId: args.jobId,
+      profileId: args.profileId,
+      clips: args.clips,
+      textCards: args.textCards,
+      calculatedDuration: args.calculatedDuration,
+      targetDuration: args.targetDuration,
+      effectsPlanId: args.effectsPlanId,
+      overlayPlanId: args.overlayPlanId,
+      audioPlanId: args.audioPlanId,
+      previewQuality: args.previewQuality,
+      previewR2Key: args.previewR2Key,
+      previewGeneratedAt: args.previewR2Key ? now : undefined,
+      recommendedExports: args.recommendedExports,
+      revision: args.revision,
+      parentRevision: args.parentRevision,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await ctx.db.patch(args.jobId, {
+      workflowPlanId: planId,
+      updatedAt: now,
+    });
+
+    return planId;
+  },
+});
+
+/**
+ * HTTP action to create workflow plan
+ */
+export const httpCreateWorkflowPlan = action({
+  args: {
+    jobId: v.string(),
+    profileId: v.string(),
+    clips: v.array(
+      v.object({
+        clipIndex: v.number(),
+        sceneIndex: v.number(),
+        sourceStart: v.number(),
+        sourceEnd: v.number(),
+        targetStart: v.number(),
+        targetEnd: v.number(),
+        userModified: v.optional(v.boolean()),
+        userAdded: v.optional(v.boolean()),
+      })
+    ),
+    textCards: v.array(
+      v.object({
+        cardIndex: v.number(),
+        atSec: v.number(),
+        durationSec: v.number(),
+        text: v.string(),
+        style: v.string(),
+        motion: v.string(),
+        position: v.string(),
+        userModified: v.optional(v.boolean()),
+        userAdded: v.optional(v.boolean()),
+      })
+    ),
+    calculatedDuration: v.number(),
+    targetDuration: v.number(),
+    effectsPlanId: v.optional(v.string()),
+    overlayPlanId: v.optional(v.string()),
+    audioPlanId: v.optional(v.string()),
+    previewQuality: v.optional(v.string()),
+    previewR2Key: v.optional(v.string()),
+    recommendedExports: v.array(
+      v.object({
+        quality: v.string(),
+        format: v.string(),
+        label: v.string(),
+        description: v.string(),
+      })
+    ),
+    revision: v.number(),
+    parentRevision: v.optional(v.number()),
+    webhookSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<{ planId: Id<"trailer_workflow_plans"> }> => {
+    verifyWebhookSecret(args.webhookSecret);
+
+    const planId = await ctx.runMutation(internal.trailerJobs.createWorkflowPlan, {
+      jobId: args.jobId as Id<"trailer_jobs">,
+      profileId: args.profileId as Id<"trailer_profiles">,
+      clips: args.clips,
+      textCards: args.textCards,
+      calculatedDuration: args.calculatedDuration,
+      targetDuration: args.targetDuration,
+      effectsPlanId: args.effectsPlanId ? (args.effectsPlanId as Id<"trailer_effects_plans">) : undefined,
+      overlayPlanId: args.overlayPlanId ? (args.overlayPlanId as Id<"trailer_overlay_plans">) : undefined,
+      audioPlanId: args.audioPlanId ? (args.audioPlanId as Id<"trailer_audio_plans">) : undefined,
+      previewQuality: args.previewQuality,
+      previewR2Key: args.previewR2Key,
+      recommendedExports: args.recommendedExports,
+      revision: args.revision,
+      parentRevision: args.parentRevision,
+    });
+
+    return { planId };
+  },
+});
+
+// ============================================
+// PHASE 9: AI SELECTION PLAN
+// ============================================
+
+/**
+ * Create AI selection plan (Phase 9: genre optimization, audience analysis, arc validation)
+ */
+export const createAISelectionPlan = internalMutation({
+  args: {
+    jobId: v.id("trailer_jobs"),
+    profileId: v.id("trailer_profiles"),
+    detectedGenre: v.string(),
+    genreConfidence: v.number(),
+    genreConventions: v.object({
+      structure: v.array(v.string()),
+      openingPace: v.string(),
+      climaxPace: v.string(),
+      textCardStyle: v.string(),
+    }),
+    audienceType: v.string(),
+    audienceAnalysis: v.object({
+      topScenes: v.array(v.number()),
+      openingScene: v.optional(v.number()),
+      climaxScenes: v.array(v.number()),
+      toneRecommendation: v.optional(v.string()),
+      keyDialogue: v.optional(v.array(v.object({
+        text: v.string(),
+        start: v.number(),
+        audienceAppeal: v.string(),
+      }))),
+    }),
+    emotionalArc: v.object({
+      peakMoment: v.number(),
+      resolutionStart: v.number(),
+      intensityCurve: v.array(v.number()),
+    }),
+    arcValidation: v.object({
+      valid: v.boolean(),
+      score: v.number(),
+      issues: v.array(v.string()),
+      suggestions: v.array(v.string()),
+    }),
+    pacingAnalysis: v.object({
+      valid: v.boolean(),
+      avgDuration: v.number(),
+      minDuration: v.number(),
+      maxDuration: v.number(),
+      totalDuration: v.number(),
+      cutsPerMinute: v.number(),
+      accelerating: v.boolean(),
+      issues: v.array(v.string()),
+      suggestions: v.array(v.string()),
+    }),
+    recommendedEffects: v.object({
+      transitions: v.array(v.string()),
+      useFlashFrames: v.boolean(),
+      useSlowMotion: v.boolean(),
+      letterbox: v.optional(v.string()),
+      textCardStyle: v.string(),
+      textCardFrequency: v.number(),
+      shotAcceleration: v.boolean(),
+      musicSyncImportance: v.number(),
+    }),
+    enhancementSummary: v.object({
+      genreApplied: v.boolean(),
+      audienceOptimized: v.boolean(),
+      arcOptimized: v.boolean(),
+      pacingOptimized: v.boolean(),
+      variantsGenerated: v.number(),
+    }),
+  },
+  handler: async (ctx, args) => {
+    const planId = await ctx.db.insert("trailer_ai_selection_plans", {
+      trailerJobId: args.jobId,
+      profileId: args.profileId,
+      detectedGenre: args.detectedGenre,
+      genreConfidence: args.genreConfidence,
+      genreConventions: args.genreConventions,
+      audienceType: args.audienceType,
+      audienceAnalysis: args.audienceAnalysis,
+      emotionalArc: args.emotionalArc,
+      arcValidation: args.arcValidation,
+      pacingAnalysis: args.pacingAnalysis,
+      recommendedEffects: args.recommendedEffects,
+      enhancementSummary: args.enhancementSummary,
+      createdAt: Date.now(),
+    });
+
+    await ctx.db.patch(args.jobId, {
+      aiSelectionPlanId: planId,
+      updatedAt: Date.now(),
+    });
+
+    return planId;
+  },
+});
+
+/**
+ * HTTP action to create AI selection plan
+ */
+export const httpCreateAISelectionPlan = action({
+  args: {
+    jobId: v.string(),
+    profileId: v.string(),
+    detectedGenre: v.string(),
+    genreConfidence: v.number(),
+    genreConventions: v.object({
+      structure: v.array(v.string()),
+      openingPace: v.string(),
+      climaxPace: v.string(),
+      textCardStyle: v.string(),
+    }),
+    audienceType: v.string(),
+    audienceAnalysis: v.object({
+      topScenes: v.array(v.number()),
+      openingScene: v.optional(v.number()),
+      climaxScenes: v.array(v.number()),
+      toneRecommendation: v.optional(v.string()),
+      keyDialogue: v.optional(v.array(v.object({
+        text: v.string(),
+        start: v.number(),
+        audienceAppeal: v.string(),
+      }))),
+    }),
+    emotionalArc: v.object({
+      peakMoment: v.number(),
+      resolutionStart: v.number(),
+      intensityCurve: v.array(v.number()),
+    }),
+    arcValidation: v.object({
+      valid: v.boolean(),
+      score: v.number(),
+      issues: v.array(v.string()),
+      suggestions: v.array(v.string()),
+    }),
+    pacingAnalysis: v.object({
+      valid: v.boolean(),
+      avgDuration: v.number(),
+      minDuration: v.number(),
+      maxDuration: v.number(),
+      totalDuration: v.number(),
+      cutsPerMinute: v.number(),
+      accelerating: v.boolean(),
+      issues: v.array(v.string()),
+      suggestions: v.array(v.string()),
+    }),
+    recommendedEffects: v.object({
+      transitions: v.array(v.string()),
+      useFlashFrames: v.boolean(),
+      useSlowMotion: v.boolean(),
+      letterbox: v.optional(v.string()),
+      textCardStyle: v.string(),
+      textCardFrequency: v.number(),
+      shotAcceleration: v.boolean(),
+      musicSyncImportance: v.number(),
+    }),
+    enhancementSummary: v.object({
+      genreApplied: v.boolean(),
+      audienceOptimized: v.boolean(),
+      arcOptimized: v.boolean(),
+      pacingOptimized: v.boolean(),
+      variantsGenerated: v.number(),
+    }),
+    webhookSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<{ planId: Id<"trailer_ai_selection_plans"> }> => {
+    verifyWebhookSecret(args.webhookSecret);
+
+    const planId = await ctx.runMutation(internal.trailerJobs.createAISelectionPlan, {
+      jobId: args.jobId as Id<"trailer_jobs">,
+      profileId: args.profileId as Id<"trailer_profiles">,
+      detectedGenre: args.detectedGenre,
+      genreConfidence: args.genreConfidence,
+      genreConventions: args.genreConventions,
+      audienceType: args.audienceType,
+      audienceAnalysis: args.audienceAnalysis,
+      emotionalArc: args.emotionalArc,
+      arcValidation: args.arcValidation,
+      pacingAnalysis: args.pacingAnalysis,
+      recommendedEffects: args.recommendedEffects,
+      enhancementSummary: args.enhancementSummary,
+    });
+
+    return { planId };
   },
 });

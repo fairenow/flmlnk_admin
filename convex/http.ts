@@ -1885,4 +1885,204 @@ http.route({
   }),
 });
 
+// =============================================================================
+// R2 UPLOAD PROXY (CORS FALLBACK)
+// =============================================================================
+
+/**
+ * Proxy endpoint for uploading parts to R2.
+ * This is a fallback when direct browser->R2 uploads fail due to CORS.
+ *
+ * POST /r2/upload-part
+ * Headers: X-Upload-Url (presigned URL), X-Part-Number
+ * Body: Raw file chunk
+ * Returns: { etag: string }
+ *
+ * Note: This adds latency but works around CORS issues.
+ */
+http.route({
+  path: "/r2/upload-part",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    // CORS headers for the response
+    const corsHeaders = {
+      "Access-Control-Allow-Origin": request.headers.get("Origin") || "*",
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, X-Upload-Url, X-Part-Number, Authorization",
+      "Access-Control-Expose-Headers": "ETag",
+    };
+
+    try {
+      const uploadUrl = request.headers.get("X-Upload-Url");
+      const partNumber = request.headers.get("X-Part-Number");
+
+      if (!uploadUrl || !partNumber) {
+        return new Response(
+          JSON.stringify({ error: "Missing X-Upload-Url or X-Part-Number header" }),
+          {
+            status: 400,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          }
+        );
+      }
+
+      // Validate the URL is pointing to R2
+      const url = new URL(uploadUrl);
+      if (!url.hostname.includes("r2.cloudflarestorage.com")) {
+        return new Response(
+          JSON.stringify({ error: "Invalid upload URL" }),
+          {
+            status: 400,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          }
+        );
+      }
+
+      // Get the chunk data
+      const chunk = await request.arrayBuffer();
+
+      // Forward to R2
+      const r2Response = await fetch(uploadUrl, {
+        method: "PUT",
+        body: chunk,
+        headers: {
+          "Content-Length": chunk.byteLength.toString(),
+        },
+      });
+
+      if (!r2Response.ok) {
+        const errorText = await r2Response.text();
+        console.error(`R2 upload failed: ${r2Response.status} - ${errorText}`);
+        return new Response(
+          JSON.stringify({ error: `R2 upload failed: ${r2Response.status}` }),
+          {
+            status: r2Response.status,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          }
+        );
+      }
+
+      // Get ETag from R2 response
+      const etag = r2Response.headers.get("ETag") || `"part-${partNumber}"`;
+
+      return new Response(
+        JSON.stringify({ etag, partNumber: parseInt(partNumber) }),
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "ETag": etag,
+            ...corsHeaders,
+          },
+        }
+      );
+    } catch (err) {
+      console.error("R2 upload proxy error:", err);
+      return new Response(
+        JSON.stringify({ error: "Internal server error" }),
+        {
+          status: 500,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        }
+      );
+    }
+  }),
+});
+
+/**
+ * CORS preflight handler for upload proxy
+ */
+http.route({
+  path: "/r2/upload-part",
+  method: "OPTIONS",
+  handler: httpAction(async (ctx, request) => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": request.headers.get("Origin") || "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, X-Upload-Url, X-Part-Number, Authorization",
+        "Access-Control-Max-Age": "86400",
+      },
+    });
+  }),
+});
+
+// =============================================================================
+// KLAP WEBHOOK (Modal → Convex)
+// =============================================================================
+
+/**
+ * Webhook endpoint for Klap processing results from Modal
+ *
+ * Modal sends either:
+ * - Progress updates: { type: "progress", job_id, status, progress, current_step }
+ * - Final results: { success, clips, error, task_id, folder_id, job_id }
+ */
+http.route({
+  path: "/klap-webhook",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+
+      // Verify webhook secret if configured
+      const expectedSecret = process.env.MODAL_WEBHOOK_SECRET;
+      const providedSecret = request.headers.get("X-Webhook-Secret");
+
+      if (expectedSecret && providedSecret !== expectedSecret) {
+        return new Response(JSON.stringify({ error: "Invalid webhook secret" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      const jobId = body.job_id;
+      if (!jobId) {
+        return new Response(JSON.stringify({ error: "Missing job_id" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      // Handle progress updates
+      if (body.type === "progress") {
+        await ctx.runMutation(internal.klap.handleKlapProgressUpdate, {
+          jobId,
+          status: body.status || "PROCESSING",
+          progress: body.progress || 0,
+          currentStep: body.current_step || "Processing...",
+        });
+
+        return new Response(JSON.stringify({ received: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      // Handle final results (success or failure)
+      await ctx.runMutation(internal.klap.handleKlapWebhookResult, {
+        jobId,
+        success: body.success || false,
+        clips: body.clips,
+        error: body.error,
+        errorStage: body.error_stage,
+        taskId: body.task_id,
+        folderId: body.folder_id,
+      });
+
+      return new Response(JSON.stringify({ received: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch (err) {
+      console.error("Klap webhook error:", err);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }),
+});
+
 export default http;

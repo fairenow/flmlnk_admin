@@ -62,6 +62,7 @@ export default defineSchema({
     socials: v.optional(
       v.object({
         instagram: v.optional(v.string()),
+        twitter: v.optional(v.string()),
         facebook: v.optional(v.string()),
         youtube: v.optional(v.string()),
         tiktok: v.optional(v.string()),
@@ -70,6 +71,11 @@ export default defineSchema({
       }),
     ),
     featuredStreamingUrl: v.optional(v.string()),
+    // IMDb scraping status tracking
+    scrapingStatus: v.optional(v.string()), // "pending", "in_progress", "completed", "failed"
+    scrapingStartedAt: v.optional(v.number()),
+    scrapingCompletedAt: v.optional(v.number()),
+    scrapingError: v.optional(v.string()), // Error message if scraping failed
   }).index("by_user", ["userId"])
     .index("by_slug", ["slug"]),
 
@@ -1221,6 +1227,8 @@ export default defineSchema({
     aspectRatio: v.optional(v.string()), // "9:16", "16:9", "1:1" (default "9:16")
     // Clip tone/style for AI analysis
     clipTone: v.optional(v.string()), // "viral", "educational", "funny", "dramatic", "highlights", "inspirational"
+    // Full video mode - process full video without clipping, just add captions/format
+    fullVideoMode: v.optional(v.boolean()), // When true, skip clip detection and process the entire video
     // Enhanced caption styling
     captionStyle: v.optional(
       v.object({
@@ -1236,6 +1244,12 @@ export default defineSchema({
     ),
     // Video metadata (populated after upload/analysis)
     videoDuration: v.optional(v.number()), // seconds
+    // Klap/external processing metadata (JSON stringified)
+    processingMetadata: v.optional(v.string()),
+    // Processing state for real-time UI updates
+    processingState: v.optional(v.string()), // "downloading", "transcribing", "analyzing", "generating", "completed"
+    processingProgress: v.optional(v.number()), // 0-100
+    processingStep: v.optional(v.string()), // Human-readable step description
     // Timestamps
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -1375,6 +1389,10 @@ export default defineSchema({
     // R2 storage
     r2ClipKey: v.string(),
     r2ThumbKey: v.optional(v.string()),
+    // External URL (for Klap or other external services)
+    externalUrl: v.optional(v.string()),
+    // Source provider (e.g., "modal", "klap")
+    sourceProvider: v.optional(v.string()),
     // Scoring
     score: v.optional(v.number()), // 0-100 viral/engagement score
     // Face detection
@@ -1560,7 +1578,7 @@ export default defineSchema({
   // Campaign recipients - Track individual email sends
   campaign_recipients: defineTable({
     campaignId: v.id("email_campaigns"),
-    fanEmailId: v.id("fan_emails"),
+    fanEmailId: v.optional(v.id("fan_emails")), // Optional for incomplete_onboarding audience
 
     // Recipient info (denormalized for performance)
     email: v.string(),
@@ -1607,6 +1625,53 @@ export default defineSchema({
     .index("by_campaign", ["campaignId"])
     .index("by_recipient", ["recipientId"])
     .index("by_campaign_eventType", ["campaignId", "eventType"]),
+
+  // ============================================
+  // PLATFORM CAMPAIGNS (Admin-only)
+  // For admin-to-user communications (not creator-to-fan)
+  // ============================================
+
+  // Platform campaigns for admin-to-user communications
+  platform_campaigns: defineTable({
+    name: v.string(),
+    subject: v.string(),
+    htmlContent: v.string(),
+    textContent: v.string(),
+    fromName: v.string(),
+    replyTo: v.optional(v.string()),
+    audienceType: v.string(), // "incomplete_onboarding", "all_users", "no_profile"
+    status: v.string(), // "draft", "sending", "sent", "failed"
+    sentAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+    totalRecipients: v.optional(v.number()),
+    sentCount: v.optional(v.number()),
+    failedCount: v.optional(v.number()),
+    deliveredCount: v.optional(v.number()),
+    bouncedCount: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    createdBy: v.string(), // admin userId
+  })
+    .index("by_status", ["status"])
+    .index("by_createdAt", ["createdAt"]),
+
+  // Platform campaign recipients
+  platform_campaign_recipients: defineTable({
+    campaignId: v.id("platform_campaigns"),
+    email: v.string(),
+    name: v.optional(v.string()),
+    authUserId: v.optional(v.string()), // betterAuth user ID
+    userId: v.optional(v.id("users")), // Convex users table ID
+    status: v.string(), // "pending", "sent", "delivered", "bounced", "failed"
+    resendEmailId: v.optional(v.string()), // Resend's email ID for tracking
+    sentAt: v.optional(v.number()),
+    deliveredAt: v.optional(v.number()),
+    errorMessage: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_campaign", ["campaignId"])
+    .index("by_email", ["email"])
+    .index("by_campaign_status", ["campaignId", "status"]),
 
   // Audience tags - Tag definitions for audience segmentation
   audience_tags: defineTable({
@@ -3125,73 +3190,100 @@ export default defineSchema({
   }).index("by_trailerJob", ["trailerJobId"]),
 
   // ============================================
-  // PLATFORM CAMPAIGNS (Admin-only)
-  // For sending emails to users without fan_emails (e.g., incomplete onboarding)
+  // AI EDITOR CHAT ASSISTANT
   // ============================================
 
-  // Platform campaigns - Admin-to-user communications
-  platform_campaigns: defineTable({
-    // Campaign identity
-    name: v.string(),
-    subject: v.string(),
-    htmlContent: v.string(),
-    textContent: v.string(),
+  // Editor chat sessions - Track chat sessions per user/profile
+  editor_chat_sessions: defineTable({
+    userId: v.id("users"),
+    actorProfileId: v.id("actor_profiles"),
+    slug: v.string(),
 
-    // Sender info
-    fromName: v.string(),
-    replyTo: v.optional(v.string()),
+    // Session state
+    status: v.string(), // "active", "completed", "archived"
+    currentSection: v.optional(v.string()), // "profile", "featured-project", "featured-clip", etc.
 
-    // Audience targeting
-    audienceType: v.string(), // "incomplete_onboarding", "all_users", "no_profile"
+    // Session context - what the AI knows about the current state
+    profileContext: v.optional(v.string()), // JSON snapshot of current profile data
 
-    // Status
-    status: v.string(), // "draft", "sending", "sent", "failed"
-
-    // Stats (denormalized for quick access)
-    totalRecipients: v.optional(v.number()),
-    sentCount: v.optional(v.number()),
-    deliveredCount: v.optional(v.number()),
-    failedCount: v.optional(v.number()),
-    bouncedCount: v.optional(v.number()),
+    // Message count (denormalized)
+    messageCount: v.number(),
 
     // Timestamps
-    scheduledAt: v.optional(v.number()),
-    sentAt: v.optional(v.number()),
-    completedAt: v.optional(v.number()),
     createdAt: v.number(),
-    updatedAt: v.optional(v.number()),
-
-    // Admin who created
-    createdBy: v.string(), // admin userId
+    updatedAt: v.number(),
+    lastMessageAt: v.optional(v.number()),
   })
-    .index("by_status", ["status"])
-    .index("by_createdAt", ["createdAt"])
-    .index("by_audienceType", ["audienceType"]),
+    .index("by_userId", ["userId"])
+    .index("by_actorProfile", ["actorProfileId"])
+    .index("by_slug", ["slug"])
+    .index("by_userId_actorProfile", ["userId", "actorProfileId"]),
 
-  // Platform campaign recipients - Track individual sends
-  platform_campaign_recipients: defineTable({
-    campaignId: v.id("platform_campaigns"),
+  // Editor chat messages - Individual messages in a chat session
+  editor_chat_messages: defineTable({
+    sessionId: v.id("editor_chat_sessions"),
 
-    // Recipient info
-    email: v.string(),
-    name: v.optional(v.string()),
-    authUserId: v.optional(v.string()), // betterAuth user ID
-    userId: v.optional(v.id("users")), // App user ID if exists
+    // Message content
+    role: v.string(), // "user", "assistant", "system"
+    content: v.string(),
 
-    // Delivery status
-    status: v.string(), // "pending", "sent", "delivered", "bounced", "failed"
-    resendEmailId: v.optional(v.string()),
+    // If this was an action request
+    actionRequest: v.optional(v.object({
+      type: v.string(), // "update_field", "add_url", "upload_file", "explain"
+      section: v.string(), // "profile", "featured-project", "featured-clip"
+      field: v.optional(v.string()), // "displayName", "headline", "bio", etc.
+      value: v.optional(v.string()), // The value to set
+      url: v.optional(v.string()), // For URL-type fields
+    })),
 
-    // Error tracking
-    errorMessage: v.optional(v.string()),
+    // If this message triggered an action
+    actionResult: v.optional(v.object({
+      success: v.boolean(),
+      message: v.string(),
+      fieldUpdated: v.optional(v.string()),
+      previousValue: v.optional(v.string()),
+      newValue: v.optional(v.string()),
+    })),
+
+    // Streaming state
+    isStreaming: v.optional(v.boolean()),
+    streamingComplete: v.optional(v.boolean()),
+
+    // Token usage for tracking
+    inputTokens: v.optional(v.number()),
+    outputTokens: v.optional(v.number()),
 
     // Timestamps
-    sentAt: v.optional(v.number()),
-    deliveredAt: v.optional(v.number()),
-    bouncedAt: v.optional(v.number()),
     createdAt: v.number(),
   })
-    .index("by_campaign", ["campaignId"])
-    .index("by_email", ["email"])
-    .index("by_campaign_status", ["campaignId", "status"]),
+    .index("by_session", ["sessionId"])
+    .index("by_session_createdAt", ["sessionId", "createdAt"]),
+
+  // Editor action queue - Pending actions to be executed
+  editor_action_queue: defineTable({
+    sessionId: v.id("editor_chat_sessions"),
+    messageId: v.optional(v.id("editor_chat_messages")),
+    actorProfileId: v.id("actor_profiles"),
+
+    // Action details
+    actionType: v.string(), // "update_profile", "update_project", "update_clip", "add_project", "add_clip"
+    section: v.string(), // "profile", "featured-project", "featured-clip"
+    field: v.string(), // Field to update
+    value: v.string(), // New value
+
+    // Execution state
+    status: v.string(), // "pending", "processing", "completed", "failed"
+    error: v.optional(v.string()),
+
+    // Execution context
+    executedAt: v.optional(v.number()),
+    executedBy: v.optional(v.string()), // "user_confirm", "auto", "voice"
+
+    // Timestamps
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_sessionId", ["sessionId"])
+    .index("by_actorProfile", ["actorProfileId"])
+    .index("by_status", ["status"]),
 });

@@ -25,6 +25,8 @@ import {
   CompleteMultipartUploadCommand,
   AbortMultipartUploadCommand,
   GetObjectCommand,
+  ListPartsCommand,
+  type ListPartsCommandOutput,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
@@ -365,6 +367,11 @@ export const r2SignParts = action({
 /**
  * Complete a multipart upload after all parts are uploaded.
  * Assembles the parts into a single object in R2.
+ *
+ * IMPORTANT: Uses ListPartsCommand to fetch actual ETags from R2 instead of
+ * relying on client-reported ETags. This is necessary because browsers may not
+ * be able to read the ETag header from presigned URL responses due to CORS
+ * restrictions (R2 may not expose ETag in Access-Control-Expose-Headers).
  */
 export const r2CompleteMultipart = action({
   args: {
@@ -389,7 +396,7 @@ export const r2CompleteMultipart = action({
       throw new Error(`Upload session is not active: ${session.status}`);
     }
 
-    // Verify all parts are uploaded
+    // Verify all parts are uploaded (based on client tracking)
     if (session.completedParts.length !== session.totalParts) {
       throw new Error(
         `Not all parts uploaded: ${session.completedParts.length}/${session.totalParts}`
@@ -399,22 +406,81 @@ export const r2CompleteMultipart = action({
     const client = getR2Client();
     const bucket = getR2Bucket();
 
-    // Sort parts by part number (required for completion)
-    const sortedParts = [...session.completedParts].sort(
-      (a, b) => a.partNumber - b.partNumber
-    );
+    // Fetch actual parts from R2 using ListParts
+    // This is necessary because browsers may not be able to read ETag headers
+    // from presigned URL responses due to CORS restrictions
+    const actualParts: Array<{ PartNumber: number; ETag: string }> = [];
+    let partMarker: string | undefined = undefined;
 
-    // Complete multipart upload
-    // IMPORTANT: ETags are passed exactly as stored (may include quotes)
+    do {
+      const listResponse: ListPartsCommandOutput = await client.send(
+        new ListPartsCommand({
+          Bucket: bucket,
+          Key: session.r2Key,
+          UploadId: session.uploadId,
+          PartNumberMarker: partMarker,
+        })
+      );
+
+      if (listResponse.Parts) {
+        for (const part of listResponse.Parts) {
+          if (part.PartNumber && part.ETag) {
+            actualParts.push({
+              PartNumber: part.PartNumber,
+              ETag: part.ETag,
+            });
+          }
+        }
+      }
+
+      // Handle pagination if there are more parts
+      if (listResponse.IsTruncated && listResponse.NextPartNumberMarker) {
+        partMarker = String(listResponse.NextPartNumberMarker);
+      } else {
+        partMarker = undefined;
+      }
+    } while (partMarker);
+
+    // Verify we found all expected parts
+    if (actualParts.length !== session.totalParts) {
+      console.error(
+        `Part count mismatch: R2 has ${actualParts.length} parts, expected ${session.totalParts}`
+      );
+      throw new Error(
+        `Part count mismatch: R2 has ${actualParts.length} parts, expected ${session.totalParts}. ` +
+        `Some parts may not have uploaded successfully.`
+      );
+    }
+
+    // Sort parts by part number (required for completion)
+    actualParts.sort((a, b) => a.PartNumber - b.PartNumber);
+
+    // Log if client ETags differed (helps diagnose CORS issues)
+    const clientEtags = session.completedParts
+      .sort((a: { partNumber: number; etag: string }, b: { partNumber: number; etag: string }) => a.partNumber - b.partNumber)
+      .map((p: { partNumber: number; etag: string }) => p.etag);
+    const r2Etags = actualParts.map(p => p.ETag);
+    const etagsDiffer = clientEtags.some((clientEtag: string, i: number) => {
+      // Normalize ETags for comparison (remove quotes)
+      const normalizedClient = clientEtag.replace(/"/g, "");
+      const normalizedR2 = r2Etags[i]?.replace(/"/g, "") || "";
+      return normalizedClient !== normalizedR2;
+    });
+
+    if (etagsDiffer) {
+      console.warn(
+        `Client ETags differ from R2 ETags (CORS may not expose ETag header). ` +
+        `Using R2 ETags for completion. Client: ${JSON.stringify(clientEtags)}, R2: ${JSON.stringify(r2Etags)}`
+      );
+    }
+
+    // Complete multipart upload using actual ETags from R2
     const completeCommand = new CompleteMultipartUploadCommand({
       Bucket: bucket,
       Key: session.r2Key,
       UploadId: session.uploadId,
       MultipartUpload: {
-        Parts: sortedParts.map((part) => ({
-          PartNumber: part.partNumber,
-          ETag: part.etag,
-        })),
+        Parts: actualParts,
       },
     });
 

@@ -15,17 +15,28 @@ type EmailCallbackParams = {
 
 const siteUrl = process.env.SITE_URL!;
 const convexSiteUrl = process.env.CONVEX_SITE_URL;
-const adminSiteUrl = process.env.ADMIN_SITE_URL;
+
+// Production domains that need cross-origin access to auth endpoints
+const PRODUCTION_ORIGINS = [
+  "https://www.flmlnk.com",
+  "https://flmlnk.com",
+  "https://admin.flmlnk.com",
+  "https://actors.flmlnk.com",
+  "https://flmlnk-convex-complete.vercel.app",
+];
 
 // Build trusted origins list with the app URL and common variants
+// This ensures auth works across different environments and proxy configurations
 const trustedOriginsList: string[] = [siteUrl];
 if (convexSiteUrl) {
   trustedOriginsList.push(convexSiteUrl);
 }
-// Include admin site URL for cross-subdomain auth
-if (adminSiteUrl) {
-  trustedOriginsList.push(adminSiteUrl);
-}
+// Add production domains
+PRODUCTION_ORIGINS.forEach((origin) => {
+  if (!trustedOriginsList.includes(origin)) {
+    trustedOriginsList.push(origin);
+  }
+});
 // Include localhost variants for development
 if (process.env.NODE_ENV !== "production" || siteUrl.includes("localhost")) {
   trustedOriginsList.push("http://localhost:3000", "http://localhost:3001");
@@ -33,35 +44,31 @@ if (process.env.NODE_ENV !== "production" || siteUrl.includes("localhost")) {
 
 export const authComponent = createClient<DataModel>(components.betterAuth);
 
-// Determine if we're in production (not localhost)
-const isProduction = !siteUrl.includes("localhost");
-
 export const createAuth = (
   ctx: GenericCtx<DataModel>,
   { optionsOnly } = { optionsOnly: false },
 ) => {
+  // Determine cookie domain for session sharing across subdomains
+  const isProduction = siteUrl.includes("flmlnk.com");
+  const cookieDomain = isProduction ? ".flmlnk.com" : undefined;
+
   return betterAuth({
     logger: {
       disabled: optionsOnly,
     },
     baseURL: siteUrl,
     trustedOrigins: trustedOriginsList,
-    database: authComponent.adapter(ctx),
-    // Session cookie configuration for cross-subdomain auth
     session: {
       cookieCache: {
         enabled: true,
       },
-      // In production, set cookie domain to .flmlnk.com for subdomain sharing
-      // This allows admin.flmlnk.com to read cookies set by flmlnk.com
-      ...(isProduction && {
-        cookie: {
-          domain: ".flmlnk.com",
-          secure: true,
-          sameSite: "lax" as const,
-        },
-      }),
+      cookie: {
+        domain: cookieDomain, // Shared across *.flmlnk.com in production
+        secure: isProduction,
+        sameSite: "lax",
+      },
     },
+    database: authComponent.adapter(ctx),
     emailAndPassword: {
       enabled: true,
       requireEmailVerification: true,

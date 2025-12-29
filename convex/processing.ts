@@ -26,6 +26,45 @@ import { internal } from "./_generated/api";
 import { Id, Doc } from "./_generated/dataModel";
 
 // =============================================================================
+// YOUTUBE METADATA HELPERS
+// =============================================================================
+
+/**
+ * Fetch YouTube video metadata using the oEmbed API (no API key required).
+ * Returns the video title and thumbnail URL.
+ */
+async function fetchYouTubeMetadata(videoUrl: string): Promise<{
+  title?: string;
+  thumbnailUrl?: string;
+  authorName?: string;
+}> {
+  try {
+    const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(videoUrl)}&format=json`;
+    const response = await fetch(oembedUrl, {
+      method: "GET",
+      headers: {
+        "Accept": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      console.warn(`[YouTube oEmbed] Failed to fetch metadata: ${response.status}`);
+      return {};
+    }
+
+    const data = await response.json();
+    return {
+      title: data.title || undefined,
+      thumbnailUrl: data.thumbnail_url || undefined,
+      authorName: data.author_name || undefined,
+    };
+  } catch (error) {
+    console.warn(`[YouTube oEmbed] Error fetching metadata:`, error);
+    return {};
+  }
+}
+
+// =============================================================================
 // JOB MUTATIONS
 // =============================================================================
 
@@ -49,6 +88,8 @@ export const createJob = mutation({
     aspectRatio: v.optional(v.string()), // "9:16", "16:9", "1:1"
     // Clip tone/style
     clipTone: v.optional(v.string()), // "viral", "educational", "funny", etc.
+    // Full video mode - process full video without clipping
+    fullVideoMode: v.optional(v.boolean()),
     // Enhanced caption styling
     captionStyle: v.optional(
       v.object({
@@ -105,6 +146,7 @@ export const createJob = mutation({
       maxClipDuration: args.maxClipDuration,
       aspectRatio: args.aspectRatio,
       clipTone: args.clipTone,
+      fullVideoMode: args.fullVideoMode,
       captionStyle: args.captionStyle,
       createdAt: now,
       updatedAt: now,
@@ -780,6 +822,7 @@ export const claimJobForProcessing = internalMutation({
         maxClipDuration: number | undefined;
         aspectRatio: string | undefined;
         clipTone: string | undefined;
+        fullVideoMode: boolean | undefined;
         captionStyle: {
           highlightColor?: string;
           fontFamily?: string;
@@ -837,6 +880,7 @@ export const claimJobForProcessing = internalMutation({
       maxClipDuration: job.maxClipDuration,
       aspectRatio: job.aspectRatio,
       clipTone: job.clipTone,
+      fullVideoMode: job.fullVideoMode,
       captionStyle: job.captionStyle,
     };
   },
@@ -1325,10 +1369,16 @@ export const getJobClipsWithUrls = action({
       return { clips: [], error: null };
     }
 
-    // Generate signed URLs for each clip
+    // Separate clips into external (Klap) and R2 clips
     const r2Keys: Array<{ id: string; clipKey: string; thumbKey?: string }> = [];
+    const externalClipUrls = new Map<string, string>();
+
     for (const clip of clips) {
-      if (clip.r2ClipKey) {
+      // Check for external URL (Klap clips)
+      if (clip.externalUrl) {
+        externalClipUrls.set(clip._id, clip.externalUrl);
+      } else if (clip.r2ClipKey && !clip.r2ClipKey.startsWith("klap-external-")) {
+        // Regular R2 clip
         r2Keys.push({
           id: clip._id,
           clipKey: clip.r2ClipKey,
@@ -1337,32 +1387,34 @@ export const getJobClipsWithUrls = action({
       }
     }
 
-    if (r2Keys.length === 0) {
-      // No R2 clips, return as-is
-      return {
-        clips: clips.map((clip: Doc<"processing_clips">) => ({
-          ...clip,
-          clipUrl: null,
-          thumbUrl: null,
-        })),
-        error: null,
-      };
-    }
-
-    // Call R2 action to get signed URLs
-    const signedUrls = await ctx.runAction(internal.r2.r2GetSignedUrlsInternal, {
-      r2Keys,
-      expiresIn: args.expiresIn || 3600,
-    });
-
-    // Create a map for quick lookup
+    // Create URL map for R2 clips
     const urlMap = new Map<string, { clipUrl: string; thumbUrl: string | null }>();
-    for (const item of signedUrls) {
-      urlMap.set(item.id, { clipUrl: item.clipUrl, thumbUrl: item.thumbUrl });
+
+    // Get signed URLs for R2 clips if any
+    if (r2Keys.length > 0) {
+      const signedUrls = await ctx.runAction(internal.r2.r2GetSignedUrlsInternal, {
+        r2Keys,
+        expiresIn: args.expiresIn || 3600,
+      });
+
+      for (const item of signedUrls) {
+        urlMap.set(item.id, { clipUrl: item.clipUrl, thumbUrl: item.thumbUrl });
+      }
     }
 
-    // Merge clips with URLs
+    // Merge clips with URLs (external or R2)
     const clipsWithUrls: ClipWithUrl[] = clips.map((clip: Doc<"processing_clips">) => {
+      // Check for external URL first (Klap clips)
+      const externalUrl = externalClipUrls.get(clip._id);
+      if (externalUrl) {
+        return {
+          ...clip,
+          clipUrl: externalUrl,
+          thumbUrl: null, // Klap doesn't provide thumbnails
+        };
+      }
+
+      // Otherwise use R2 signed URL
       const urls = urlMap.get(clip._id);
       return {
         ...clip,
@@ -1767,6 +1819,88 @@ export const getPublicProcessingClipsWithUrls = action({
 });
 
 /**
+ * Get in-progress processing jobs for an actor profile.
+ * Returns jobs that are currently being processed (not yet READY or FAILED).
+ * Used for real-time progress tracking in the UI.
+ *
+ * Filters out stale jobs that have been processing for too long (> 30 minutes)
+ * to avoid cluttering the UI with abandoned/stuck jobs.
+ */
+export const getInProgressJobs = query({
+  args: { slug: v.string() },
+  handler: async (ctx, args) => {
+    // Verify user is authenticated
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return [];
+    }
+
+    // Get user
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
+      .unique();
+    if (!user) {
+      return [];
+    }
+
+    // Get profile by slug
+    const profile = await ctx.db
+      .query("actor_profiles")
+      .withIndex("by_slug", (q) => q.eq("slug", args.slug))
+      .unique();
+    if (!profile || profile.userId !== user._id) {
+      return [];
+    }
+
+    // Get all processing jobs for this profile
+    const jobs = await ctx.db
+      .query("processing_jobs")
+      .withIndex("by_actorProfile", (q) =>
+        q.eq("actorProfileId", profile._id)
+      )
+      .order("desc")
+      .collect();
+
+    // Filter to only in-progress jobs (not READY and not FAILED)
+    const inProgressStatuses = ["CREATED", "UPLOADING", "UPLOADED", "DOWNLOADING", "PROCESSING"];
+
+    // Stale job threshold: 30 minutes
+    // Jobs older than this are likely stuck and should not clutter the UI
+    const STALE_JOB_THRESHOLD_MS = 30 * 60 * 1000;
+    const now = Date.now();
+
+    const inProgressJobs = jobs.filter((job) => {
+      // Must be in an in-progress status
+      if (!inProgressStatuses.includes(job.status)) {
+        return false;
+      }
+
+      // Filter out stale jobs (older than 30 minutes with no recent updates)
+      const lastUpdate = job.updatedAt || job.createdAt;
+      const isStale = now - lastUpdate > STALE_JOB_THRESHOLD_MS;
+      if (isStale) {
+        return false;
+      }
+
+      return true;
+    });
+
+    return inProgressJobs.map((job) => ({
+      _id: job._id,
+      title: job.title || "Processing Video",
+      sourceUrl: job.sourceUrl,
+      status: job.status,
+      progress: job.progress ?? 0,
+      currentStep: job.currentStep || "Initializing...",
+      inputType: job.inputType,
+      createdAt: job.createdAt,
+      updatedAt: job.updatedAt,
+    }));
+  },
+});
+
+/**
  * Get processing clips grouped by their source job.
  * Returns jobs with their associated clips for display in the editor view.
  */
@@ -2018,12 +2152,17 @@ export const submitYouTubeJob = action({
       throw new Error("Profile not found or not owned by user");
     }
 
+    // Fetch YouTube video metadata (title, thumbnail) for better display
+    const youtubeMetadata = await fetchYouTubeMetadata(args.sourceVideoUrl);
+    console.log(`[submitYouTubeJob] Fetched YouTube metadata:`, youtubeMetadata);
+
     // Create processing job with inputType="youtube"
     const jobId = await ctx.runMutation(internal.processing.createJobInternal, {
       userId: user._id,
       actorProfileId: profile._id,
       inputType: "youtube",
       sourceUrl: args.sourceVideoUrl,
+      title: youtubeMetadata.title, // Set title from YouTube metadata
       clipCount: args.clipCount ?? 5,
       layout: args.layout ?? "standard",
       captionStyle: args.captionStyle,
@@ -2181,6 +2320,8 @@ export const getProcessingClipsGroupedByJobWithUrls = action({
     // Get clips for each job
     const jobGroups: ProcessingJobGroup[] = [];
     const allR2Keys: Array<{ id: string; clipKey: string; thumbKey?: string }> = [];
+    // Track external URLs (Klap clips)
+    const externalClipUrls = new Map<string, string>();
 
     for (const job of jobs) {
       const clips = await ctx.runQuery(internal.processing.getJobClipsInternal, {
@@ -2191,9 +2332,13 @@ export const getProcessingClipsGroupedByJobWithUrls = action({
         continue;
       }
 
-      // Collect R2 keys for batch URL generation
+      // Collect R2 keys for batch URL generation, and track external URLs
       for (const clip of clips) {
-        if (clip.r2ClipKey) {
+        // Check for external URL (Klap clips)
+        if (clip.externalUrl) {
+          externalClipUrls.set(clip._id, clip.externalUrl);
+        } else if (clip.r2ClipKey && !clip.r2ClipKey.startsWith("klap-external-")) {
+          // Regular R2 clip
           allR2Keys.push({
             id: clip._id,
             clipKey: clip.r2ClipKey,
@@ -2213,28 +2358,32 @@ export const getProcessingClipsGroupedByJobWithUrls = action({
           createdAt: job.createdAt,
           completedAt: job.completedAt,
         },
-        clips: clips.map((clip: Doc<"processing_clips">) => ({
-          _id: clip._id,
-          _creationTime: clip._creationTime,
-          jobId: clip.jobId,
-          clipIndex: clip.clipIndex,
-          title: clip.title,
-          description: clip.description,
-          transcript: clip.transcript,
-          duration: clip.duration,
-          startTime: clip.startTime,
-          endTime: clip.endTime,
-          score: clip.score,
-          r2ClipKey: clip.r2ClipKey,
-          r2ThumbKey: clip.r2ThumbKey,
-          clipUrl: null,
-          thumbUrl: null,
-          isPublic: clip.isPublic,
-          createdAt: clip.createdAt,
-          customThumbnailStorageId: clip.customThumbnailStorageId,
-          customThumbnailUrl: clip.customThumbnailUrl,
-          thumbnailTimestamp: clip.thumbnailTimestamp,
-        })),
+        clips: clips.map((clip: Doc<"processing_clips">) => {
+          // Check for external URL first (Klap clips)
+          const externalUrl = externalClipUrls.get(clip._id);
+          return {
+            _id: clip._id,
+            _creationTime: clip._creationTime,
+            jobId: clip.jobId,
+            clipIndex: clip.clipIndex,
+            title: clip.title,
+            description: clip.description,
+            transcript: clip.transcript,
+            duration: clip.duration,
+            startTime: clip.startTime,
+            endTime: clip.endTime,
+            score: clip.score,
+            r2ClipKey: clip.r2ClipKey,
+            r2ThumbKey: clip.r2ThumbKey,
+            clipUrl: externalUrl || null, // Use external URL if available
+            thumbUrl: null,
+            isPublic: clip.isPublic,
+            createdAt: clip.createdAt,
+            customThumbnailStorageId: clip.customThumbnailStorageId,
+            customThumbnailUrl: clip.customThumbnailUrl,
+            thumbnailTimestamp: clip.thumbnailTimestamp,
+          };
+        }),
         clipCount: clips.length,
       });
     }

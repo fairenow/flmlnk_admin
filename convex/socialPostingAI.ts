@@ -195,7 +195,7 @@ function buildUserPrompt(data: {
   }
 
   if (data.filmSlug) {
-    prompt += `\nFilm page: film.flmlnk.com/f/${data.filmSlug}`;
+    prompt += `\nFilm page: flmlnk.com/f/${data.filmSlug}`;
   }
 
   if (data.assetType) {

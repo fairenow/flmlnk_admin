@@ -759,7 +759,7 @@ export const executeCampaignSend = internalAction({
 });
 
 /**
- * Add unsubscribe footer to HTML email
+ * Add unsubscribe footer to HTML email with FlmLnk branding
  */
 function addUnsubscribeFooter(
   html: string,
@@ -773,12 +773,13 @@ function addUnsubscribeFooter(
         You're receiving this because you signed up for updates from ${senderName}.
       </p>
       <p style="color: #64748b; font-size: 12px; margin: 0 0 8px 0;">
-        <a href="https://flmlnk.com/${pageSlug}" style="color: #f53c56; text-decoration: none;">View ${senderName}'s page</a> ·
+        <a href="https://flmlnk.com/f/${pageSlug}" style="color: #f53c56; text-decoration: none;">View ${senderName}'s page</a> ·
         <a href="https://flmlnk.com" style="color: #f53c56; text-decoration: none;">Flmlnk</a>
       </p>
-      <p style="color: #64748b; font-size: 11px; margin: 0;">
+      <p style="color: #64748b; font-size: 11px; margin: 0 0 16px 0;">
         <a href="${unsubscribeUrl}" style="color: #64748b; text-decoration: underline;">Unsubscribe from these emails</a>
       </p>
+      <img src="https://flmlnk.com/circle.png" alt="Flmlnk" style="display: block; margin: 0 auto; width: 60px; height: auto;" />
     </div>
   `;
 

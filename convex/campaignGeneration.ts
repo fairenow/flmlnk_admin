@@ -185,7 +185,7 @@ export const gatherDataContext = internalQuery({
       subscriberCount: activeSubscribers.length,
 
       // Flmlnk page URL
-      pageUrl: `https://flmlnk.com/${profile.slug}`,
+      pageUrl: `https://flmlnk.com/f/${profile.slug}`,
     };
   },
 });
@@ -272,7 +272,7 @@ export const getDataContextForCampaign = query({
         trailerTranscriptSummary: trailerSummary?.mediumSummary,
         trailerHighlights: trailerSummary?.keyHighlights,
         subscriberCount: activeSubscribers.length,
-        pageUrl: `https://flmlnk.com/${profile.slug}`,
+        pageUrl: `https://flmlnk.com/f/${profile.slug}`,
       },
       availableProjects: projects.map((p) => ({
         _id: p._id,
@@ -407,8 +407,14 @@ HTML Guidelines:
   - Accent/links: #f53c56 (Flmlnk brand red)
 - Every paragraph, heading, and text element MUST have an explicit color style (e.g., style="color: #ffffff;")
 - Keep it mobile-responsive
-- Include proper paragraph spacing
-- Never include <html>, <head>, or <body> tags - just the content`,
+- CRITICAL FORMATTING: Each paragraph MUST have proper spacing. Use this style on EVERY <p> tag:
+  style="color: #e2e8f0; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;"
+- Use line-height: 1.6 on body text for better readability
+- Add margin-bottom: 24px between major sections
+- For headings use margin: 0 0 12px 0 and a larger font-size
+- IMPORTANT: Do NOT create wall-of-text. Break content into clear, distinct paragraphs with visual breathing room
+- Never include <html>, <head>, or <body> tags - just the content
+- Do NOT include any footer or logo - these are added automatically`,
         },
         {
           role: "user",
@@ -441,8 +447,15 @@ HTML Guidelines:
 
 /**
  * Wrap generated HTML content in a full email template
+ * Adds proper paragraph spacing and FlmLnk branding
  */
 function wrapInEmailTemplate(content: string, senderName: string): string {
+  // Process content to ensure paragraphs have proper spacing
+  // Add margin-bottom to paragraphs that don't already have margin styles
+  const processedContent = content
+    .replace(/<p(?![^>]*style[^>]*margin)/gi, '<p style="margin: 0 0 16px 0;"')
+    .replace(/<p style="([^"]*)"(?![^>]*margin)/gi, '<p style="$1; margin: 0 0 16px 0;"');
+
   return `
 <!DOCTYPE html>
 <html>
@@ -451,9 +464,20 @@ function wrapInEmailTemplate(content: string, senderName: string): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Update from ${senderName}</title>
 </head>
-<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #0c0911; color: #ffffff;">
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #0c0911; color: #ffffff; line-height: 1.6;">
   <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px; color: #ffffff;">
-    ${content}
+    <style>
+      p { margin: 0 0 16px 0 !important; }
+    </style>
+    ${processedContent}
+
+    <!-- Flmlnk Footer -->
+    <div style="text-align: center; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 24px; margin-top: 32px;">
+      <p style="color: #64748b; font-size: 12px; margin: 0 0 16px 0 !important;">
+        <a href="https://flmlnk.com" style="color: #f53c56; text-decoration: none;">Flmlnk</a> - Your Film Link
+      </p>
+      <img src="https://flmlnk.com/circle.png" alt="Flmlnk" style="display: block; margin: 0 auto; width: 60px; height: auto;" />
+    </div>
   </div>
 </body>
 </html>

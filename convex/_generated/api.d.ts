@@ -11,6 +11,7 @@
 import type * as ai from "../ai.js";
 import type * as analytics from "../analytics.js";
 import type * as audienceManagement from "../audienceManagement.js";
+import type * as deepAnalytics from "../deepAnalytics.js";
 import type * as auth from "../auth.js";
 import type * as campaignGeneration from "../campaignGeneration.js";
 import type * as campaignMetrics from "../campaignMetrics.js";
@@ -65,6 +66,7 @@ declare const fullApi: ApiFromModules<{
   analytics: typeof analytics;
   audienceManagement: typeof audienceManagement;
   auth: typeof auth;
+  deepAnalytics: typeof deepAnalytics;
   campaignGeneration: typeof campaignGeneration;
   campaignMetrics: typeof campaignMetrics;
   campaignScheduler: typeof campaignScheduler;

@@ -185,9 +185,332 @@ export const generateActorPageFromOnboarding = action({
         // Log the error but don't fail the onboarding
         console.error("[Onboarding] Failed to trigger clip generation:", error);
       }
+
+      // Also trigger Klap processing for AI clip generation
+      try {
+        await ctx.runAction(internal.klap.triggerOnboardingKlapGeneration, {
+          slug: result.slug,
+          sourceVideoUrl: args.filmTrailerYoutubeUrl,
+          tokenIdentifier: identity.tokenIdentifier,
+        });
+      } catch (error) {
+        console.error("[Onboarding] Failed to trigger Klap processing:", error);
+      }
+    }
+
+    // Trigger deep IMDb scraping if URL provided
+    if (args.imdbUrl) {
+      try {
+        await ctx.runAction(internal.profileScraper.deepScrapeForOnboarding, {
+          slug: result.slug,
+          imdbUrl: args.imdbUrl,
+        });
+      } catch (error) {
+        console.error("[Onboarding] Failed to trigger deep IMDb scraping:", error);
+      }
     }
 
     return result;
+  },
+});
+
+/**
+ * Simplified onboarding completion - 3 step flow.
+ * Creates profile and triggers background processes:
+ * 1. Firecrawl scraping for IMDb/social URLs
+ * 2. Clip generation from trailer
+ */
+export const completeSimplifiedOnboarding = action({
+  args: {
+    displayName: v.string(),
+    slug: v.string(),
+    filmTitle: v.string(),
+    trailerYoutubeUrl: v.optional(v.string()),
+    imdbUrl: v.optional(v.string()),
+    socials: v.optional(v.object({
+      instagram: v.optional(v.string()),
+      twitter: v.optional(v.string()),
+      tiktok: v.optional(v.string()),
+      youtube: v.optional(v.string()),
+    })),
+  },
+  handler: async (ctx, args): Promise<{ slug: string }> => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Please sign in to continue.");
+    }
+
+    // Generate basic copy
+    const headline = `${args.displayName} • Filmmaker`;
+    const bio = `${args.displayName} is a filmmaker creating compelling visual stories.`;
+    const filmLogline = args.filmTitle
+      ? `${args.filmTitle} - a new film by ${args.displayName}.`
+      : "";
+
+    // Create the profile using existing mutation
+    const result = await ctx.runMutation(api.filmmakers.applySimplifiedOnboarding, {
+      displayName: args.displayName,
+      slug: args.slug,
+      filmTitle: args.filmTitle,
+      trailerYoutubeUrl: args.trailerYoutubeUrl ?? "",
+      imdbUrl: args.imdbUrl,
+      instagramHandle: args.socials?.instagram,
+      twitterHandle: args.socials?.twitter,
+      tiktokHandle: args.socials?.tiktok,
+      youtubeHandle: args.socials?.youtube,
+      generated: {
+        headline,
+        bio,
+        filmLogline,
+        ctaLabel: "Watch Film",
+      },
+    });
+
+    // Background process 1: Trigger deep Firecrawl scraping for IMDb profile + top 3 films
+    // Uses parallel scraping for profile page + 3 title pages simultaneously
+    if (args.imdbUrl) {
+      try {
+        await ctx.runAction(internal.profileScraper.deepScrapeForOnboarding, {
+          slug: result.slug,
+          imdbUrl: args.imdbUrl,
+        });
+      } catch (error) {
+        console.error("[Onboarding] Failed to trigger deep profile scraping:", error);
+        // Fallback to basic scraping if deep scraping fails
+        try {
+          await ctx.runAction(internal.profileScraper.scrapeProfileUrls, {
+            slug: result.slug,
+            imdbUrl: args.imdbUrl,
+            socials: args.socials,
+          });
+        } catch (fallbackError) {
+          console.error("[Onboarding] Fallback scraping also failed:", fallbackError);
+        }
+      }
+    } else if (args.socials) {
+      // If no IMDb URL but has socials, use basic scraping
+      try {
+        await ctx.runAction(internal.profileScraper.scrapeProfileUrls, {
+          slug: result.slug,
+          socials: args.socials,
+        });
+      } catch (error) {
+        console.error("[Onboarding] Failed to trigger social scraping:", error);
+      }
+    }
+
+    // Background process 2: Trigger clip generation from trailer (Modal)
+    if (args.trailerYoutubeUrl) {
+      try {
+        await ctx.runAction(internal.clipGenerator.triggerOnboardingClipGeneration, {
+          slug: result.slug,
+          sourceVideoUrl: args.trailerYoutubeUrl,
+          tokenIdentifier: identity.tokenIdentifier,
+        });
+      } catch (error) {
+        console.error("[Onboarding] Failed to trigger clip generation:", error);
+      }
+    }
+
+    // Background process 3: Trigger Klap processing for AI clip generation from trailer
+    if (args.trailerYoutubeUrl) {
+      try {
+        await ctx.runAction(internal.klap.triggerOnboardingKlapGeneration, {
+          slug: result.slug,
+          sourceVideoUrl: args.trailerYoutubeUrl,
+          tokenIdentifier: identity.tokenIdentifier,
+        });
+      } catch (error) {
+        console.error("[Onboarding] Failed to trigger Klap processing:", error);
+      }
+    }
+
+    return { slug: result.slug };
+  },
+});
+
+/**
+ * Mutation to apply simplified onboarding data to the database.
+ */
+export const applySimplifiedOnboarding = mutation({
+  args: {
+    displayName: v.string(),
+    slug: v.string(),
+    filmTitle: v.string(),
+    trailerYoutubeUrl: v.string(),
+    imdbUrl: v.optional(v.string()),
+    instagramHandle: v.optional(v.string()),
+    twitterHandle: v.optional(v.string()),
+    tiktokHandle: v.optional(v.string()),
+    youtubeHandle: v.optional(v.string()),
+    generated: v.object({
+      headline: v.string(),
+      bio: v.string(),
+      filmLogline: v.string(),
+      ctaLabel: v.string(),
+    }),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Please sign in to continue.");
+    }
+
+    const authId = identity.tokenIdentifier;
+    const email = identity.email ?? "";
+    const name = identity.name ?? args.displayName;
+
+    // Upsert user
+    let user = await ctx.db
+      .query("users")
+      .withIndex("by_authId", (q) => q.eq("authId", authId))
+      .unique();
+
+    if (!user) {
+      const userId = await ctx.db.insert("users", {
+        authId,
+        email,
+        name,
+        imageUrl: identity.pictureUrl ?? undefined,
+        role: "filmmaker",
+      });
+      user = await ctx.db.get(userId);
+    } else {
+      await ctx.db.patch(user._id, {
+        email,
+        name,
+        imageUrl: identity.pictureUrl ?? user.imageUrl,
+        role: "filmmaker",
+      });
+    }
+
+    if (!user) throw new Error("Unable to create your account. Please try again.");
+
+    // Check slug availability
+    const existingWithSlug = await ctx.db
+      .query("actor_profiles")
+      .withIndex("by_slug", (q) => q.eq("slug", args.slug))
+      .unique();
+
+    if (existingWithSlug && existingWithSlug.userId !== user._id) {
+      throw new Error("This URL is already taken. Please choose a different one.");
+    }
+
+    // Build socials object
+    const socials = {
+      imdb: normalizeWithPrefix(args.imdbUrl, "https://www.imdb.com/name/"),
+      instagram: normalizeWithPrefix(args.instagramHandle, "https://instagram.com/"),
+      twitter: normalizeWithPrefix(args.twitterHandle, "https://twitter.com/"),
+      tiktok: normalizeWithPrefix(args.tiktokHandle, "https://www.tiktok.com/@"),
+      youtube: normalizeWithPrefix(args.youtubeHandle, "https://youtube.com/@"),
+    } as const;
+
+    const platforms = [
+      { key: "trailer", label: "Trailer", url: args.trailerYoutubeUrl },
+    ].filter((p) => Boolean(p.url));
+
+    // Upsert actor_profile
+    let profile = await ctx.db
+      .query("actor_profiles")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .unique();
+
+    const imdbUrl = socials.imdb ?? "";
+
+    if (!profile) {
+      const profileId = await ctx.db.insert("actor_profiles", {
+        userId: user._id,
+        displayName: args.displayName,
+        slug: args.slug,
+        headline: args.generated.headline,
+        bio: args.generated.bio,
+        avatarUrl: identity.pictureUrl ?? "",
+        location: "",
+        imdbId: "",
+        imdbUrl,
+        socials,
+        theme: {
+          primaryColor: "#B91C1C",
+          accentColor: "#f88958",
+          layoutVariant: "filmmaker-default",
+        },
+        genres: [],
+        platforms,
+      });
+      profile = await ctx.db.get(profileId);
+    } else {
+      await ctx.db.patch(profile._id, {
+        displayName: args.displayName,
+        slug: args.slug,
+        headline: args.generated.headline,
+        bio: args.generated.bio,
+        imdbUrl,
+        socials,
+        platforms,
+      });
+      profile = await ctx.db.get(profile._id);
+    }
+
+    if (!profile) throw new Error("Unable to create your profile. Please try again.");
+
+    // Create/update project
+    const existingProjects = await ctx.db
+      .query("projects")
+      .withIndex("by_actorProfile", (q) => q.eq("actorProfileId", profile._id))
+      .collect();
+
+    let projectId;
+    if (existingProjects.length === 0) {
+      projectId = await ctx.db.insert("projects", {
+        actorProfileId: profile._id,
+        title: args.filmTitle,
+        logline: args.generated.filmLogline,
+        description: args.generated.filmLogline,
+        posterUrl: "",
+        roleName: "Filmmaker",
+        roleType: "Director",
+        imdbTitleId: "",
+        tubiUrl: "",
+        primaryWatchLabel: args.generated.ctaLabel,
+        status: "in-development",
+      });
+    } else {
+      const primaryProject = existingProjects[0];
+      projectId = primaryProject._id;
+      await ctx.db.patch(primaryProject._id, {
+        title: args.filmTitle,
+        logline: args.generated.filmLogline,
+        description: args.generated.filmLogline,
+      });
+    }
+
+    // Create featured clip from trailer
+    if (args.trailerYoutubeUrl) {
+      const clips = await ctx.db
+        .query("clips")
+        .withIndex("by_actorProfile", (q) => q.eq("actorProfileId", profile._id))
+        .collect();
+
+      if (clips.length === 0) {
+        await ctx.db.insert("clips", {
+          actorProfileId: profile._id,
+          projectId,
+          title: `${args.filmTitle} – Trailer`,
+          youtubeUrl: args.trailerYoutubeUrl,
+          sortOrder: 1,
+          isFeatured: true,
+        });
+      } else {
+        const featured = clips.find((c) => c.isFeatured) ?? clips[0];
+        await ctx.db.patch(featured._id, {
+          youtubeUrl: args.trailerYoutubeUrl,
+          title: `${args.filmTitle} – Trailer`,
+          isFeatured: true,
+        });
+      }
+    }
+
+    return { slug: profile.slug };
   },
 });
 
@@ -514,7 +837,7 @@ export const getOnboardingStatus = query({
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) {
-      return { isAuthenticated: false, hasProfile: false, slug: null };
+      return { isAuthenticated: false, hasProfile: false, slug: null, scrapingStatus: null };
     }
 
     const user = await ctx.db
@@ -522,7 +845,7 @@ export const getOnboardingStatus = query({
       .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
       .unique();
 
-    if (!user) return { isAuthenticated: true, hasProfile: false, slug: null };
+    if (!user) return { isAuthenticated: true, hasProfile: false, slug: null, scrapingStatus: null };
 
     const profile = await ctx.db
       .query("actor_profiles")
@@ -535,7 +858,102 @@ export const getOnboardingStatus = query({
       isAuthenticated: true,
       hasProfile,
       slug: hasProfile ? profile!.slug : null,
+      scrapingStatus: profile?.scrapingStatus || null,
     };
+  },
+});
+
+/**
+ * Get the scraping status for a profile.
+ * Used by the animation component to wait for scraping to complete.
+ */
+export const getScrapingStatus = query({
+  args: { slug: v.string() },
+  handler: async (ctx, args) => {
+    const profile = await ctx.db
+      .query("actor_profiles")
+      .withIndex("by_slug", (q) => q.eq("slug", args.slug))
+      .unique();
+
+    if (!profile) {
+      return {
+        status: null as "pending" | "in_progress" | "completed" | "failed" | null,
+        startedAt: null as number | null,
+        completedAt: null as number | null,
+        error: null as string | null,
+      };
+    }
+
+    return {
+      status: profile.scrapingStatus || null,
+      startedAt: profile.scrapingStartedAt || null,
+      completedAt: profile.scrapingCompletedAt || null,
+      error: profile.scrapingError || null,
+    };
+  },
+});
+
+/**
+ * Check if a slug is available for use.
+ * Returns true if the slug is available, false if already taken.
+ */
+export const checkSlugAvailability = query({
+  args: {
+    slug: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const slug = args.slug.toLowerCase().trim();
+
+    // Check minimum length
+    if (slug.length < 3) {
+      return { available: false, reason: "Username must be at least 3 characters" };
+    }
+
+    // Check maximum length
+    if (slug.length > 48) {
+      return { available: false, reason: "Username must be 48 characters or less" };
+    }
+
+    // Check for valid characters (alphanumeric and hyphens only)
+    if (!/^[a-z0-9-]+$/.test(slug)) {
+      return { available: false, reason: "Only letters, numbers, and hyphens allowed" };
+    }
+
+    // Reserved slugs
+    const reservedSlugs = [
+      "admin", "api", "app", "auth", "dashboard", "edit", "editor",
+      "f", "filmmaker", "filmmakers", "help", "home", "login", "logout",
+      "onboarding", "profile", "profiles", "settings", "signup", "support",
+      "user", "users", "www", "flmlnk"
+    ];
+
+    if (reservedSlugs.includes(slug)) {
+      return { available: false, reason: "This username is reserved" };
+    }
+
+    // Check if slug exists in database
+    const existing = await ctx.db
+      .query("actor_profiles")
+      .withIndex("by_slug", (q) => q.eq("slug", slug))
+      .unique();
+
+    // If the current user owns this slug, it's available to them
+    if (existing) {
+      const identity = await ctx.auth.getUserIdentity();
+      if (identity) {
+        const user = await ctx.db
+          .query("users")
+          .withIndex("by_authId", (q) => q.eq("authId", identity.tokenIdentifier))
+          .unique();
+
+        if (user && existing.userId === user._id) {
+          return { available: true, reason: "This is your current username" };
+        }
+      }
+      return { available: false, reason: "Username is already taken" };
+    }
+
+    return { available: true, reason: null };
   },
 });
 

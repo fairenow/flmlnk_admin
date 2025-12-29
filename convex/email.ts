@@ -196,7 +196,7 @@ export const sendWelcomeEmail = internalAction({
       <p style="color: #64748b; font-size: 12px; margin: 0 0 16px 0;">
         <a href="https://flmlnk.com" style="color: #f53c56; text-decoration: none;">Flmlnk</a> - Your Film Link
       </p>
-      <img src="https://film.flmlnk.com/circle.png" alt="Flmlnk" style="display: block; margin: 0 auto; width: 80px; height: auto;" />
+      <img src="https://flmlnk.com/circle.png" alt="Flmlnk" style="display: block; margin: 0 auto; width: 80px; height: auto;" />
     </div>
   </div>
 </body>
@@ -350,7 +350,7 @@ export const sendInquiryNotification = internalAction({
       <p style="color: #64748b; font-size: 12px; margin: 0 0 16px 0;">
         <a href="https://flmlnk.com" style="color: #f53c56; text-decoration: none;">Flmlnk</a> - Your Film Link
       </p>
-      <img src="https://film.flmlnk.com/circle.png" alt="Flmlnk" style="display: block; margin: 0 auto; width: 80px; height: auto;" />
+      <img src="https://flmlnk.com/circle.png" alt="Flmlnk" style="display: block; margin: 0 auto; width: 80px; height: auto;" />
     </div>
   </div>
 </body>
@@ -435,7 +435,7 @@ export const sendCommentNotification = internalAction({
     }
 
     const resend = new Resend(apiKey);
-    const pageUrl = `https://film.flmlnk.com/f/${args.pageSlug}`;
+    const pageUrl = `https://flmlnk.com/f/${args.pageSlug}`;
     const truncatedMessage = args.commentMessage.length > 200
       ? args.commentMessage.substring(0, 200) + "..."
       : args.commentMessage;
@@ -490,7 +490,7 @@ export const sendCommentNotification = internalAction({
       <p style="color: #64748b; font-size: 12px; margin: 0 0 16px 0;">
         <a href="https://flmlnk.com" style="color: #f53c56; text-decoration: none;">Flmlnk</a> - Your Film Link
       </p>
-      <img src="https://film.flmlnk.com/circle.png" alt="Flmlnk" style="display: block; margin: 0 auto; width: 80px; height: auto;" />
+      <img src="https://flmlnk.com/circle.png" alt="Flmlnk" style="display: block; margin: 0 auto; width: 80px; height: auto;" />
     </div>
   </div>
 </body>
@@ -561,7 +561,7 @@ export const sendReplyNotification = internalAction({
     }
 
     const resend = new Resend(apiKey);
-    const pageUrl = `https://film.flmlnk.com/f/${args.pageSlug}`;
+    const pageUrl = `https://flmlnk.com/f/${args.pageSlug}`;
     const truncatedReply = args.replyMessage.length > 200
       ? args.replyMessage.substring(0, 200) + "..."
       : args.replyMessage;
@@ -624,7 +624,7 @@ export const sendReplyNotification = internalAction({
       <p style="color: #64748b; font-size: 12px; margin: 0 0 16px 0;">
         <a href="https://flmlnk.com" style="color: #f53c56; text-decoration: none;">Flmlnk</a> - Your Film Link
       </p>
-      <img src="https://film.flmlnk.com/circle.png" alt="Flmlnk" style="display: block; margin: 0 auto; width: 80px; height: auto;" />
+      <img src="https://flmlnk.com/circle.png" alt="Flmlnk" style="display: block; margin: 0 auto; width: 80px; height: auto;" />
     </div>
   </div>
 </body>
@@ -700,7 +700,7 @@ export const sendWeeklyDigest = internalAction({
     }
 
     const resend = new Resend(apiKey);
-    const pageUrl = `https://film.flmlnk.com/f/${args.pageSlug}`;
+    const pageUrl = `https://flmlnk.com/f/${args.pageSlug}`;
     const dashboardUrl = "https://flmlnk.com/dashboard";
 
     const changeIndicator = args.pageViewsChange >= 0
@@ -807,7 +807,7 @@ export const sendWeeklyDigest = internalAction({
       <p style="color: #64748b; font-size: 12px; margin: 0 0 16px 0;">
         <a href="https://flmlnk.com" style="color: #f53c56; text-decoration: none;">Flmlnk</a> - Your Film Link
       </p>
-      <img src="https://film.flmlnk.com/circle.png" alt="Flmlnk" style="display: block; margin: 0 auto; width: 80px; height: auto;" />
+      <img src="https://flmlnk.com/circle.png" alt="Flmlnk" style="display: block; margin: 0 auto; width: 80px; height: auto;" />
     </div>
   </div>
 </body>
@@ -969,7 +969,7 @@ export const sendProfileCompletionReminder = internalAction({
       <p style="color: #64748b; font-size: 12px; margin: 0 0 16px 0;">
         <a href="https://flmlnk.com" style="color: #f53c56; text-decoration: none;">Flmlnk</a> - Your Film Link
       </p>
-      <img src="https://film.flmlnk.com/circle.png" alt="Flmlnk" style="display: block; margin: 0 auto; width: 80px; height: auto;" />
+      <img src="https://flmlnk.com/circle.png" alt="Flmlnk" style="display: block; margin: 0 auto; width: 80px; height: auto;" />
     </div>
   </div>
 </body>
@@ -1099,7 +1099,7 @@ export const sendFirstInquiryCelebration = internalAction({
       <p style="color: #64748b; font-size: 12px; margin: 0 0 16px 0;">
         <a href="https://flmlnk.com" style="color: #f53c56; text-decoration: none;">Flmlnk</a> - Your Film Link
       </p>
-      <img src="https://film.flmlnk.com/circle.png" alt="Flmlnk" style="display: block; margin: 0 auto; width: 80px; height: auto;" />
+      <img src="https://flmlnk.com/circle.png" alt="Flmlnk" style="display: block; margin: 0 auto; width: 80px; height: auto;" />
     </div>
   </div>
 </body>
@@ -1175,7 +1175,7 @@ export const sendMilestoneNotification = internalAction({
     }
 
     const resend = new Resend(apiKey);
-    const pageUrl = `https://film.flmlnk.com/f/${args.pageSlug}`;
+    const pageUrl = `https://flmlnk.com/f/${args.pageSlug}`;
 
     const milestoneMessages: Record<string, { title: string; emoji: string; message: string }> = {
       page_views: {
@@ -1250,7 +1250,7 @@ export const sendMilestoneNotification = internalAction({
       <p style="color: #64748b; font-size: 12px; margin: 0 0 16px 0;">
         <a href="https://flmlnk.com" style="color: #f53c56; text-decoration: none;">Flmlnk</a> - Your Film Link
       </p>
-      <img src="https://film.flmlnk.com/circle.png" alt="Flmlnk" style="display: block; margin: 0 auto; width: 80px; height: auto;" />
+      <img src="https://flmlnk.com/circle.png" alt="Flmlnk" style="display: block; margin: 0 auto; width: 80px; height: auto;" />
     </div>
   </div>
 </body>
@@ -1375,7 +1375,7 @@ export const sendVerificationEmail = internalAction({
       <p style="color: #64748b; font-size: 12px; margin: 0 0 16px 0;">
         <a href="https://flmlnk.com" style="color: #f53c56; text-decoration: none;">Flmlnk</a> - Your Film Link
       </p>
-      <img src="https://film.flmlnk.com/circle.png" alt="Flmlnk" style="display: block; margin: 0 auto; width: 80px; height: auto;" />
+      <img src="https://flmlnk.com/circle.png" alt="Flmlnk" style="display: block; margin: 0 auto; width: 80px; height: auto;" />
     </div>
   </div>
 </body>
@@ -1494,7 +1494,7 @@ export const sendPasswordResetEmail = internalAction({
       <p style="color: #64748b; font-size: 12px; margin: 0 0 16px 0;">
         <a href="https://flmlnk.com" style="color: #f53c56; text-decoration: none;">Flmlnk</a> - Your Film Link
       </p>
-      <img src="https://film.flmlnk.com/circle.png" alt="Flmlnk" style="display: block; margin: 0 auto; width: 80px; height: auto;" />
+      <img src="https://flmlnk.com/circle.png" alt="Flmlnk" style="display: block; margin: 0 auto; width: 80px; height: auto;" />
     </div>
   </div>
 </body>
@@ -1563,7 +1563,7 @@ export const sendFanNewsletter = internalAction({
     }
 
     const resend = new Resend(apiKey);
-    const pageUrl = `https://film.flmlnk.com/f/${args.senderPageSlug}`;
+    const pageUrl = `https://flmlnk.com/f/${args.senderPageSlug}`;
     const recipientDisplay = args.recipientName || "there";
 
     // Build unsubscribe URL
@@ -1623,7 +1623,7 @@ export const sendFanNewsletter = internalAction({
       <p style="color: #64748b; font-size: 11px; margin: 0 0 16px 0;">
         <a href="${unsubscribeUrl}" style="color: #64748b; text-decoration: underline;">Unsubscribe from these emails</a>
       </p>
-      <img src="https://film.flmlnk.com/circle.png" alt="Flmlnk" style="display: block; margin: 0 auto; width: 80px; height: auto;" />
+      <img src="https://flmlnk.com/circle.png" alt="Flmlnk" style="display: block; margin: 0 auto; width: 80px; height: auto;" />
     </div>
   </div>
 </body>

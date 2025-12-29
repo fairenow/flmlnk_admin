@@ -374,7 +374,9 @@ export const getRecentAssetsWithSignedUrls = action({
 });
 
 /**
- * Get chart data for trajectory visualization
+ * Get chart data for trajectory visualization.
+ * This now queries analytics_events directly for real-time data,
+ * matching the approach used in deep analytics.
  */
 export const getChartData = query({
   args: {
@@ -397,37 +399,102 @@ export const getChartData = query({
 
     const days =
       args.timeRange === "7d" ? 7 : args.timeRange === "14d" ? 14 : 30;
-    const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
 
-    const startDateStr = startDate.toISOString().split("T")[0];
-    const endDateStr = endDate.toISOString().split("T")[0];
+    // Calculate time range
+    const now = Date.now();
+    const cutoffTime = now - days * 24 * 60 * 60 * 1000;
 
-    // Get analytics snapshots
-    const snapshots = await ctx.db
-      .query("analytics_snapshots")
-      .withIndex("by_profile", (q) =>
+    // Query raw analytics_events for real-time data (matching deep analytics approach)
+    const allEvents = await ctx.db
+      .query("analytics_events")
+      .withIndex("by_actorProfile", (q) =>
         q.eq("actorProfileId", args.actorProfileId)
       )
       .collect();
 
-    const filteredSnapshots = snapshots
-      .filter((s) => s.date >= startDateStr && s.date <= endDateStr)
-      .sort((a, b) => a.date.localeCompare(b.date));
+    const recentEvents = allEvents.filter(
+      (e) => e._creationTime >= cutoffTime
+    );
 
-    return filteredSnapshots.map((snapshot) => ({
-      date: snapshot.date,
-      label: new Date(snapshot.date).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-      }),
-      timestamp: new Date(snapshot.date).getTime(),
-      pageViews: snapshot.pageViews,
-      clipPlays: snapshot.clipPlays,
-      engagement:
-        snapshot.clipPlays + snapshot.clipShares + snapshot.commentCount,
-    }));
+    // Group events by date
+    const dailyData = new Map<
+      string,
+      {
+        pageViews: number;
+        clipPlays: number;
+        emailCaptures: number;
+        linkClicks: number;
+        clipShares: number;
+        comments: number;
+      }
+    >();
+
+    // Initialize all days in range with zero counts
+    for (let i = 0; i < days; i++) {
+      const date = new Date(now - i * 24 * 60 * 60 * 1000);
+      const dateKey = date.toISOString().split("T")[0];
+      dailyData.set(dateKey, {
+        pageViews: 0,
+        clipPlays: 0,
+        emailCaptures: 0,
+        linkClicks: 0,
+        clipShares: 0,
+        comments: 0,
+      });
+    }
+
+    // Aggregate events by date using the same event types as deep analytics
+    for (const event of recentEvents) {
+      const dateKey = new Date(event._creationTime).toISOString().split("T")[0];
+      const dayStats = dailyData.get(dateKey);
+      if (!dayStats) continue;
+
+      switch (event.eventType) {
+        case "page_view":
+          dayStats.pageViews++;
+          break;
+        case "clip_played":
+        case "generated_clip_played":
+        case "processing_clip_played":
+        case "video_play":
+          dayStats.clipPlays++;
+          break;
+        case "email_captured":
+          dayStats.emailCaptures++;
+          break;
+        case "social_link_clicked":
+        case "outbound_link_clicked":
+        case "watch_cta_clicked":
+        case "get_updates_clicked":
+        case "share_button_clicked":
+          dayStats.linkClicks++;
+          break;
+        case "clip_shared":
+        case "social_share_completed":
+          dayStats.clipShares++;
+          break;
+        case "comment_submitted":
+          dayStats.comments++;
+          break;
+      }
+
+      dailyData.set(dateKey, dayStats);
+    }
+
+    // Convert to sorted array for chart
+    return Array.from(dailyData.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, stats]) => ({
+        date,
+        label: new Date(date).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+        }),
+        timestamp: new Date(date).getTime(),
+        pageViews: stats.pageViews,
+        clipPlays: stats.clipPlays,
+        engagement: stats.clipPlays + stats.clipShares + stats.comments + stats.linkClicks,
+      }));
   },
 });
 
@@ -527,7 +594,9 @@ export const getAssetGenerationStats = query({
 });
 
 /**
- * Get metrics summary for the overview cards
+ * Get metrics summary for the overview cards.
+ * This now queries analytics_events directly for real-time data,
+ * matching the approach used in deep analytics.
  */
 export const getMetricsSummary = query({
   args: {
@@ -571,60 +640,74 @@ export const getMetricsSummary = query({
 
     const days =
       args.timeRange === "7d" ? 7 : args.timeRange === "14d" ? 14 : 30;
-    const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
 
-    const startDateStr = startDate.toISOString().split("T")[0];
-    const endDateStr = endDate.toISOString().split("T")[0];
+    // Calculate time ranges for current and previous periods
+    const now = Date.now();
+    const currentPeriodStart = now - days * 24 * 60 * 60 * 1000;
+    const previousPeriodStart = currentPeriodStart - days * 24 * 60 * 60 * 1000;
 
-    // Get current period snapshots
-    const snapshots = await ctx.db
-      .query("analytics_snapshots")
-      .withIndex("by_profile", (q) =>
+    // Query raw analytics_events for real-time data (matching deep analytics approach)
+    const allEvents = await ctx.db
+      .query("analytics_events")
+      .withIndex("by_actorProfile", (q) =>
         q.eq("actorProfileId", args.actorProfileId)
       )
       .collect();
 
-    const currentPeriod = snapshots.filter(
-      (s) => s.date >= startDateStr && s.date <= endDateStr
+    // Split events into current and previous periods
+    const currentPeriodEvents = allEvents.filter(
+      (e) => e._creationTime >= currentPeriodStart
+    );
+    const previousPeriodEvents = allEvents.filter(
+      (e) => e._creationTime >= previousPeriodStart && e._creationTime < currentPeriodStart
     );
 
-    // Get previous period for comparison
-    const prevStartDate = new Date(startDate);
-    prevStartDate.setDate(prevStartDate.getDate() - days);
-    const prevStartDateStr = prevStartDate.toISOString().split("T")[0];
-
-    const previousPeriod = snapshots.filter(
-      (s) => s.date >= prevStartDateStr && s.date < startDateStr
-    );
-
-    // Calculate totals
-    const current = {
-      pageViews: currentPeriod.reduce((sum, s) => sum + s.pageViews, 0),
-      clipPlays: currentPeriod.reduce((sum, s) => sum + s.clipPlays, 0),
-      emailCaptures: currentPeriod.reduce(
-        (sum, s) => sum + (s.emailCaptures ?? 0),
-        0
-      ),
-      linkClicks: currentPeriod.reduce(
-        (sum, s) => sum + (s.socialClicks ?? 0),
-        0
-      ),
+    // Aggregate event counts by type for current period
+    const countEvents = (events: typeof allEvents) => {
+      const counts: Record<string, number> = {};
+      for (const event of events) {
+        counts[event.eventType] = (counts[event.eventType] ?? 0) + 1;
+      }
+      return counts;
     };
 
-    const previous = {
-      pageViews: previousPeriod.reduce((sum, s) => sum + s.pageViews, 0),
-      clipPlays: previousPeriod.reduce((sum, s) => sum + s.clipPlays, 0),
-      emailCaptures: previousPeriod.reduce(
-        (sum, s) => sum + (s.emailCaptures ?? 0),
-        0
-      ),
-      linkClicks: previousPeriod.reduce(
-        (sum, s) => sum + (s.socialClicks ?? 0),
-        0
-      ),
-    };
+    const currentCounts = countEvents(currentPeriodEvents);
+    const previousCounts = countEvents(previousPeriodEvents);
+
+    // Calculate metrics using the same event types as deep analytics
+    // Page Views: page_view events
+    const currentPageViews = currentCounts["page_view"] ?? 0;
+    const previousPageViews = previousCounts["page_view"] ?? 0;
+
+    // Clip Plays: clip_played + generated_clip_played + processing_clip_played + video_play
+    const currentClipPlays =
+      (currentCounts["clip_played"] ?? 0) +
+      (currentCounts["generated_clip_played"] ?? 0) +
+      (currentCounts["processing_clip_played"] ?? 0) +
+      (currentCounts["video_play"] ?? 0);
+    const previousClipPlays =
+      (previousCounts["clip_played"] ?? 0) +
+      (previousCounts["generated_clip_played"] ?? 0) +
+      (previousCounts["processing_clip_played"] ?? 0) +
+      (previousCounts["video_play"] ?? 0);
+
+    // Email Captures: email_captured events
+    const currentEmailCaptures = currentCounts["email_captured"] ?? 0;
+    const previousEmailCaptures = previousCounts["email_captured"] ?? 0;
+
+    // Link Clicks: social_link_clicked + outbound_link_clicked + watch_cta_clicked + get_updates_clicked
+    const currentLinkClicks =
+      (currentCounts["social_link_clicked"] ?? 0) +
+      (currentCounts["outbound_link_clicked"] ?? 0) +
+      (currentCounts["watch_cta_clicked"] ?? 0) +
+      (currentCounts["get_updates_clicked"] ?? 0) +
+      (currentCounts["share_button_clicked"] ?? 0);
+    const previousLinkClicks =
+      (previousCounts["social_link_clicked"] ?? 0) +
+      (previousCounts["outbound_link_clicked"] ?? 0) +
+      (previousCounts["watch_cta_clicked"] ?? 0) +
+      (previousCounts["get_updates_clicked"] ?? 0) +
+      (previousCounts["share_button_clicked"] ?? 0);
 
     // Calculate percentage changes
     const calcChange = (curr: number, prev: number) => {
@@ -633,17 +716,14 @@ export const getMetricsSummary = query({
     };
 
     return {
-      pageViews: current.pageViews,
-      pageViewsChange: calcChange(current.pageViews, previous.pageViews),
-      clipPlays: current.clipPlays,
-      clipPlaysChange: calcChange(current.clipPlays, previous.clipPlays),
-      emailCaptures: current.emailCaptures,
-      emailCapturesChange: calcChange(
-        current.emailCaptures,
-        previous.emailCaptures
-      ),
-      linkClicks: current.linkClicks,
-      linkClicksChange: calcChange(current.linkClicks, previous.linkClicks),
+      pageViews: currentPageViews,
+      pageViewsChange: calcChange(currentPageViews, previousPageViews),
+      clipPlays: currentClipPlays,
+      clipPlaysChange: calcChange(currentClipPlays, previousClipPlays),
+      emailCaptures: currentEmailCaptures,
+      emailCapturesChange: calcChange(currentEmailCaptures, previousEmailCaptures),
+      linkClicks: currentLinkClicks,
+      linkClicksChange: calcChange(currentLinkClicks, previousLinkClicks),
     };
   },
 });

@@ -1,11 +1,11 @@
 import { v } from "convex/values";
+
 import {
   mutation,
   query,
   action,
   internalMutation,
   internalQuery,
-  internalAction,
 } from "./_generated/server";
 import { internal, components } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
@@ -138,28 +138,49 @@ export const getAudiencePreview = query({
   args: {
     audienceType: v.string(),
   },
-  async handler(ctx, { audienceType }) {
+  async handler(ctx, { audienceType }): Promise<{ count: number; sampleEmails: string[] }> {
     await verifyAdmin(ctx);
 
     if (audienceType === "incomplete_onboarding") {
-      const recipients = await ctx.runQuery(
-        internal.platformCampaigns.getIncompleteOnboardingUsers,
-        {}
-      );
+      // Get all betterAuth users
+      const authResult = await ctx.runQuery(components.betterAuth.adapter.findMany, {
+        model: "user",
+        paginationOpts: { cursor: null, numItems: 10000 },
+      });
+      const authUsers = authResult.page || [];
+
+      // Get all application users and profiles
+      const appUsers = await ctx.db.query("users").collect();
+      const actorProfiles = await ctx.db.query("actor_profiles").collect();
+      const userIdsWithProfiles = new Set(actorProfiles.map((p) => p.userId.toString()));
+
+      const incompleteUsers: Array<{ email: string; name?: string }> = [];
+      for (const authUser of authUsers) {
+        if (!authUser.email) continue;
+        const appUser = appUsers.find((u) => u.authId === authUser._id);
+        if (!appUser || !userIdsWithProfiles.has(appUser._id.toString())) {
+          incompleteUsers.push({
+            email: authUser.email as string,
+            name: (authUser.name as string) || undefined,
+          });
+        }
+      }
+
       return {
-        count: recipients.length,
-        sampleEmails: recipients.slice(0, 5).map((r) => r.email),
+        count: incompleteUsers.length,
+        sampleEmails: incompleteUsers.slice(0, 5).map((r) => r.email),
       };
     }
 
     if (audienceType === "all_users") {
-      const authUsers = await ctx.runQuery(
-        internal.platformCampaigns.getAllAuthUsers,
-        {}
-      );
+      const authResult = await ctx.runQuery(components.betterAuth.adapter.findMany, {
+        model: "user",
+        paginationOpts: { cursor: null, numItems: 10000 },
+      });
+      const authUsers = authResult.page || [];
       return {
         count: authUsers.length,
-        sampleEmails: authUsers.slice(0, 5).map((r: any) => r.email),
+        sampleEmails: authUsers.slice(0, 5).map((r: any) => r.email as string).filter(Boolean),
       };
     }
 
@@ -207,11 +228,12 @@ export const getAllAuthUsers = internalQuery({
 export const getIncompleteOnboardingUsers = internalQuery({
   args: {},
   async handler(ctx) {
-    // Get all betterAuth users
-    const authUsersResult = await ctx.runQuery(
-      internal.platformCampaigns.getAllAuthUsers,
-      {}
-    );
+    // Get all betterAuth users directly
+    const authResult = await ctx.runQuery(components.betterAuth.adapter.findMany, {
+      model: "user",
+      paginationOpts: { cursor: null, numItems: 10000 },
+    });
+    const authUsersResult = authResult.page || [];
 
     // Get all application users
     const appUsers = await ctx.db.query("users").collect();
@@ -237,16 +259,16 @@ export const getIncompleteOnboardingUsers = internalQuery({
       if (!appUser) {
         // User signed up but never created app user
         incompleteUsers.push({
-          email: authUser.email,
-          name: authUser.name || undefined,
-          authUserId: authUser._id,
+          email: authUser.email as string,
+          name: (authUser.name as string) || undefined,
+          authUserId: authUser._id as string,
         });
       } else if (!userIdsWithProfiles.has(appUser._id.toString())) {
         // User exists but no profile
         incompleteUsers.push({
-          email: authUser.email,
-          name: authUser.name || appUser.name || appUser.displayName || undefined,
-          authUserId: authUser._id,
+          email: authUser.email as string,
+          name: (authUser.name as string) || appUser.name || undefined,
+          authUserId: authUser._id as string,
           userId: appUser._id,
         });
       }
