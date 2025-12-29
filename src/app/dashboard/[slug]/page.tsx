@@ -32,6 +32,7 @@ import {
   Shield,
   Sparkles,
   User,
+  Users,
   Wand2,
   X,
   Zap,
@@ -56,10 +57,12 @@ import { CampaignDashboard } from "@/components/campaigns";
 import { SocialPostingDashboard } from "@/components/socialPosting";
 import { OverviewBento } from "@/components/overview";
 import { BoostModule } from "@/components/boost";
+import { DeepAnalytics } from "@/components/admin/DeepAnalytics";
+import { AdminEmailCampaigns } from "@/components/admin/AdminEmailCampaigns";
 import type { AssetType } from "@/components/overview/types";
 
 // Module types for dynamic content rendering
-type DashboardModule = "overview" | "public-links" | "clips-generator" | "image-manager" | "account-settings" | "email-campaigns" | "social-posting" | "boost";
+type DashboardModule = "overview" | "public-links" | "clips-generator" | "image-manager" | "account-settings" | "email-campaigns" | "social-posting" | "boost" | "admin-analytics" | "admin-emails";
 
 type Submission = {
   id: string;
@@ -191,7 +194,16 @@ export default function UserDashboardPage() {
     }
   }, [searchParams]);
 
-  const { data: sessionData, isLoading: sessionLoading } = useSession();
+  const { data: sessionData, isPending: sessionLoading } = useSession();
+  const userEmail = sessionData?.user?.email;
+
+  // Check if user is superadmin for showing admin modules
+  const superadminCheck = useQuery(
+    api.users.checkSuperadminByEmail,
+    userEmail ? { email: userEmail } : "skip"
+  );
+  const isSuperadmin = superadminCheck?.superadmin === true;
+
   const status = useQuery(api.filmmakers.getOnboardingStatus, {});
   const ownerSlug = status?.slug;
 
@@ -203,7 +215,7 @@ export default function UserDashboardPage() {
     : "/onboarding";
   const data = useQuery(
     api.filmmakers.getOwnerEditablePage,
-    urlSlug ? { slug: urlSlug } : undefined,
+    urlSlug ? { slug: urlSlug } : "skip",
   );
   const userDetails = useQuery(api.users.getCurrent, {});
   const updateUser = useMutation(api.users.updateCurrent);
@@ -692,6 +704,40 @@ export default function UserDashboardPage() {
                   </button>
                 ))}
               </div>
+
+              {/* Admin Modules - Only visible to superadmins */}
+              {isSuperadmin && (
+                <div className="space-y-2 mt-6">
+                  <div className="flex items-center gap-2 px-2">
+                    <Shield className="h-4 w-4 text-pink-400" />
+                    <p className="text-xs uppercase tracking-[0.2em] text-pink-400 font-semibold">Admin</p>
+                  </div>
+                  {[
+                    { label: "Deep Analytics", module: "admin-analytics" as DashboardModule, icon: BarChart3 },
+                    { label: "All Filmmakers", module: "admin-emails" as DashboardModule, icon: Users },
+                  ].map((item) => (
+                    <button
+                      key={item.label}
+                      type="button"
+                      onClick={() => {
+                        setActiveModule(item.module);
+                        setIsSidebarOpen(false);
+                      }}
+                      className={`flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-sm font-medium transition ${
+                        activeModule === item.module
+                          ? "border-pink-500 bg-pink-100 text-pink-700 dark:bg-pink-600/30 dark:text-white"
+                          : "border-pink-200 bg-pink-50 text-slate-700 hover:border-pink-300 hover:bg-pink-100 dark:border-pink-900/40 dark:bg-pink-900/20 dark:text-white dark:hover:border-pink-700/60 dark:hover:bg-pink-900/30"
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <item.icon className="h-4 w-4" />
+                        {item.label}
+                      </span>
+                      {activeModule === item.module && <Sparkles className="h-4 w-4 text-amber-500 dark:text-amber-200" />}
+                    </button>
+                  ))}
+                </div>
+              )}
 
               <div className="space-y-3 rounded-2xl border border-red-300 bg-red-50 p-4 mt-6 dark:border-red-900/50 dark:bg-red-900/20">
                 <p className="text-xs uppercase tracking-[0.2em] text-red-600 dark:text-red-200">Quick links</p>
@@ -1314,6 +1360,16 @@ export default function UserDashboardPage() {
             {/* ============ BOOST MODULE ============ */}
             {activeModule === "boost" && actorProfileId && (
               <BoostModule actorProfileId={actorProfileId} />
+            )}
+
+            {/* ============ ADMIN: DEEP ANALYTICS MODULE ============ */}
+            {activeModule === "admin-analytics" && isSuperadmin && userEmail && (
+              <DeepAnalytics adminEmail={userEmail} />
+            )}
+
+            {/* ============ ADMIN: ALL FILMMAKERS EMAIL MODULE ============ */}
+            {activeModule === "admin-emails" && isSuperadmin && userEmail && (
+              <AdminEmailCampaigns adminEmail={userEmail} />
             )}
           </section>
         </div>
