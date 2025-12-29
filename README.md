@@ -6,7 +6,7 @@ This is the **admin site** for the FlmLnk platform. It provides administrative c
 
 ### Shared Infrastructure, Separate Concerns
 
-The admin portal shares the same **Convex** and **Modal** infrastructure as the main user-facing site (`flmlnk`), but maintains strict separation through admin-specific implementations:
+The admin portal shares the same **Convex** and **Modal** infrastructure as the main user-facing site (`flmlnk_convex_codex`), but maintains strict separation through admin-specific implementations:
 
 | Layer | Shared | Admin-Specific |
 |-------|--------|----------------|
@@ -18,7 +18,7 @@ The admin portal shares the same **Convex** and **Modal** infrastructure as the 
 
 1. **Single Source of Truth**: Both sites read from the same database, ensuring data consistency
 2. **No User Impact**: Admin operations use dedicated tables/queries (e.g., `admin_analytics`, `adminGetUsers`) to avoid affecting user-side performance or functionality
-3. **Centralized Deployment**: Convex and Modal projects are built and deployed from the **main user repository** (`flmlnk`), with admin additions included there
+3. **Centralized Deployment**: Convex and Modal projects are built and deployed from the **main user repository** (`flmlnk_convex_codex`), with admin additions included there
 4. **Clear Boundaries**: Admin services are namespaced to prevent accidental cross-contamination
 
 ### Admin-Specific Components
@@ -33,7 +33,7 @@ The following are built as admin-specific implementations in the shared Convex/M
 
 ### For the User-Side Team
 
-When working on the main `flmlnk` repository, be aware that:
+When working on the main `flmlnk_convex_codex` repository, be aware that:
 
 1. **Convex schema** (`convex/schema.ts`) includes admin tables - these are prefixed with `admin_` or clearly documented
 2. **Convex functions** may include admin-specific files (e.g., `convex/admin/`) - these should not be modified without admin team coordination
@@ -86,9 +86,9 @@ When working on the main `flmlnk` repository, be aware that:
 
 When you need new admin functionality:
 
-1. **Schema changes**: Add admin-prefixed tables in the main `flmlnk` repo's `convex/schema.ts`
+1. **Schema changes**: Add admin-prefixed tables in the main `flmlnk_convex_codex` repo's `convex/schema.ts`
 2. **Queries/Mutations**: Create admin-specific functions in `convex/admin/` directory in the main repo
-3. **Deploy**: Run `npm run convex:deploy` from the main `flmlnk` repository
+3. **Deploy**: Run `npm run convex:deploy` from the main `flmlnk_convex_codex` repository
 4. **Sync**: Run `npm run convex:dev` here to pull updated types
 
 ### Table Architecture
@@ -135,20 +135,13 @@ Configure the following environment variables in your Vercel project settings:
 1. Push your code to GitHub
 2. Import the repository in Vercel
 3. Configure environment variables in Vercel project settings (listed above)
-4. Set custom domain to `film.flmlnk.com` in Vercel project settings
+4. Set custom domain to `flmlnk.com` in Vercel project settings
 5. Deploy!
 
 ## Modal Integration
 
-> **Important**: Like Convex, Modal functions are managed in the **main user repository** (`flmlnk`).
+> **Important**: Like Convex, Modal functions are managed in the **main user repository** (`flmlnk_convex_codex`).
 
-### Admin Modal Services
-
-Admin-specific Modal functions should be created in the main repo with clear namespacing:
-
-- `admin_email_service.py` - Bulk email sending, campaign management
-- `admin_generation_service.py` - Admin content generation tools
-- `admin_analytics_service.py` - Heavy analytics processing
 
 ### Calling Modal from Admin
 
@@ -163,11 +156,11 @@ This admin site calls the same Modal endpoints as the user site. Admin functions
 
 - **Auth routes** live under `app/api/auth/[...betterAuth]/route.ts`
 - **Convex functions** are managed in the main `flmlnk` repo - run `npx convex dev` here only to sync types
-- **Modal functions** are similarly managed in the main `flmlnk` repo
+- **Modal functions** are similarly managed in the main `flmlnk_convex_codex` repo
 - **Admin permissions** should be validated on both the frontend and in Convex/Modal functions
 - TypeScript type checking for Convex functions is handled separately by the Convex CLI to avoid build conflicts
 
 ## Related Repositories
 
-- **flmlnk** (main user site) - Contains the source of truth for Convex schema and Modal functions
+- **flmlnk_convex_codex** (main user site) - Contains the source of truth for Convex schema and Modal functions
 - **flmlnk_admin** (this repo) - Admin frontend that consumes the shared backend
