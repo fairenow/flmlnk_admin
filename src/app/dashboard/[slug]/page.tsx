@@ -259,20 +259,22 @@ export default function UserDashboardPage() {
     }
   }, [sessionLoading, isAuthenticated, router, dashboardPath]);
 
-  // If user doesn't have a profile, redirect to onboarding
+  // If user doesn't have a profile and is not a superadmin, redirect to onboarding
+  // Superadmins can access the dashboard without having a filmmaker profile
   useEffect(() => {
-    if (status && !status.hasProfile) {
+    if (status && !status.hasProfile && !isSuperadmin) {
       router.replace("/onboarding");
     }
-  }, [router, status]);
+  }, [router, status, isSuperadmin]);
 
   // If the URL slug doesn't match the user's profile slug, redirect to correct URL
+  // Superadmins can view any profile's dashboard
   useEffect(() => {
-    if (ownerSlug && urlSlug && ownerSlug !== urlSlug) {
+    if (ownerSlug && urlSlug && ownerSlug !== urlSlug && !isSuperadmin) {
       // User is trying to access another user's dashboard - redirect to their own
       router.replace(`/dashboard/${ownerSlug}`);
     }
-  }, [ownerSlug, urlSlug, router]);
+  }, [ownerSlug, urlSlug, router, isSuperadmin]);
 
   useEffect(() => {
     if (!status?.hasProfile || !urlSlug) return;
@@ -372,7 +374,8 @@ export default function UserDashboardPage() {
     return null;
   }
 
-  if (status && !status.hasProfile) {
+  // Skip this check for superadmins - they can access dashboard without a profile
+  if (status && !status.hasProfile && !isSuperadmin) {
     return null;
   }
 
@@ -384,7 +387,59 @@ export default function UserDashboardPage() {
     );
   }
 
+  // For superadmins without a profile, show admin-only dashboard
   if (!data || !data.profile || !draft) {
+    if (isSuperadmin && userEmail) {
+      return (
+        <main className="min-h-screen bg-white text-slate-800 dark:bg-flmlnk-dark dark:text-slate-100">
+          <div className="relative mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+            <div className="pb-6">
+              <p className="text-xs uppercase tracking-[0.25em] text-pink-600 dark:text-pink-200">Admin Portal</p>
+              <h1 className="text-3xl font-semibold tracking-tight text-slate-900 dark:text-white">
+                Welcome, Admin
+              </h1>
+            </div>
+            <div className="grid gap-6 lg:grid-cols-2">
+              <div
+                className="cursor-pointer rounded-3xl border border-pink-300 bg-pink-50 p-6 shadow-lg transition hover:border-pink-400 hover:shadow-xl dark:border-pink-900/50 dark:bg-pink-900/20"
+                onClick={() => setActiveModule("admin-analytics")}
+              >
+                <div className="flex items-center gap-3 mb-4">
+                  <BarChart3 className="h-8 w-8 text-pink-600 dark:text-pink-400" />
+                  <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Deep Analytics</h2>
+                </div>
+                <p className="text-sm text-slate-600 dark:text-slate-300">
+                  View platform-wide statistics, user engagement, and page-by-page analytics.
+                </p>
+              </div>
+              <div
+                className="cursor-pointer rounded-3xl border border-pink-300 bg-pink-50 p-6 shadow-lg transition hover:border-pink-400 hover:shadow-xl dark:border-pink-900/50 dark:bg-pink-900/20"
+                onClick={() => setActiveModule("admin-emails")}
+              >
+                <div className="flex items-center gap-3 mb-4">
+                  <Users className="h-8 w-8 text-pink-600 dark:text-pink-400" />
+                  <h2 className="text-xl font-semibold text-slate-900 dark:text-white">All Filmmakers</h2>
+                </div>
+                <p className="text-sm text-slate-600 dark:text-slate-300">
+                  View all registered users and filmmakers for email campaigns.
+                </p>
+              </div>
+            </div>
+
+            {/* Render admin modules when selected */}
+            <div className="mt-8">
+              {activeModule === "admin-analytics" && (
+                <DeepAnalytics adminEmail={userEmail} />
+              )}
+              {activeModule === "admin-emails" && (
+                <AdminEmailCampaigns adminEmail={userEmail} />
+              )}
+            </div>
+          </div>
+        </main>
+      );
+    }
+
     return (
       <main className="min-h-screen bg-white text-slate-800 dark:bg-flmlnk-dark dark:text-slate-100">
         <div className="mx-auto flex max-w-3xl flex-col items-center gap-4 px-6 py-16 text-center">
