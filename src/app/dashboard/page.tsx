@@ -1,50 +1,32 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { useQuery } from "convex/react";
-import { Loader2, Shield } from "lucide-react";
-
-import { api } from "@convex/_generated/api";
+import { Shield } from "lucide-react";
+import Link from "next/link";
 
 /**
  * Main admin dashboard landing page.
- *
- * Redirects authenticated superadmins to their personalized dashboard URL
- * based on their filmmaker profile slug.
- *
- * Note: AdminAuthGuard in the layout already ensures the user is:
- * 1. Authenticated
- * 2. A superadmin
+ * Shows navigation to admin sections.
  */
 export default function DashboardPage() {
-  const router = useRouter();
-  const status = useQuery(api.filmmakers.getOnboardingStatus, {});
-  const ownerSlug = status?.slug;
-
-  // If user doesn't have a profile, redirect to onboarding
-  useEffect(() => {
-    if (status && !status.hasProfile) {
-      router.replace("/onboarding");
-    }
-  }, [router, status]);
-
-  // Redirect to user-specific dashboard once we have the slug
-  useEffect(() => {
-    if (ownerSlug) {
-      router.replace(`/dashboard/${ownerSlug}`);
-    }
-  }, [ownerSlug, router]);
-
-  // Show loading state while determining where to redirect
   return (
     <main className="flex min-h-screen items-center justify-center bg-admin-dark">
-      <div className="flex flex-col items-center gap-4">
+      <div className="flex flex-col items-center gap-6 text-center">
         <div className="flex items-center gap-3">
-          <Shield className="w-8 h-8 text-admin-primary-400" />
-          <Loader2 className="h-6 w-6 animate-spin text-admin-primary-400" />
+          <Shield className="w-10 h-10 text-admin-primary-400" />
         </div>
-        <p className="text-sm text-slate-400">Loading your dashboard...</p>
+        <div>
+          <h1 className="text-2xl font-bold text-white mb-2">FLMLNK Admin Dashboard</h1>
+          <p className="text-sm text-slate-400">Welcome to the admin portal</p>
+        </div>
+
+        <div className="grid gap-4 mt-4">
+          <Link
+            href="/admin"
+            className="px-6 py-3 bg-admin-primary-500 hover:bg-admin-primary-600 text-white font-medium rounded-lg transition-colors"
+          >
+            Go to Admin Panel
+          </Link>
+        </div>
       </div>
     </main>
   );
