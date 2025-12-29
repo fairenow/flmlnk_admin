@@ -9,6 +9,11 @@ const GTM_ID = process.env.NEXT_PUBLIC_GTM_ID;
 export const metadata: Metadata = {
   title: "FLMLNK Admin",
   description: "Internal admin dashboard for FLMLNK team collaboration and management.",
+  icons: {
+    icon: "/flmlnk_icon.png",
+    shortcut: "/flmlnk_icon.png",
+    apple: "/flmlnk_icon.png",
+  },
   openGraph: {
     title: "FLMLNK Admin",
     description: "Internal admin dashboard for FLMLNK team collaboration and management.",
