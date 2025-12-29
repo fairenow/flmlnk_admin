@@ -28,6 +28,7 @@ export default defineSchema({
     superadmin: v.optional(v.boolean()),
   })
     .index("by_authId", ["authId"])
+    .index("by_email", ["email"])
     .index("by_username", ["username"]),
 
   actor_profiles: defineTable({
