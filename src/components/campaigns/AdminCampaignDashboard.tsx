@@ -28,18 +28,20 @@ import {
 type ViewMode = "list" | "compose" | "metrics";
 
 interface AdminCampaignDashboardProps {
+  adminEmail: string;
   onBack?: () => void;
 }
 
-export function AdminCampaignDashboard({ onBack }: AdminCampaignDashboardProps) {
+export function AdminCampaignDashboard({ adminEmail, onBack }: AdminCampaignDashboardProps) {
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [selectedCampaignId, setSelectedCampaignId] = useState<Id<"admin_email_campaigns"> | null>(null);
   const [audienceType, setAudienceType] = useState<string>("all_filmmakers");
   const [showFilters, setShowFilters] = useState(false);
 
   // Fetch admin campaigns
-  const campaigns = useQuery(api.adminEmails.getCampaigns, {});
+  const campaigns = useQuery(api.adminEmails.getCampaigns, { adminEmail });
   const audiencePreview = useQuery(api.adminEmails.getAudiencePreview, {
+    adminEmail,
     audienceType,
   });
 
@@ -70,19 +72,20 @@ export function AdminCampaignDashboard({ onBack }: AdminCampaignDashboardProps) 
 
   const handleDeleteCampaign = async (campaignId: Id<"admin_email_campaigns">) => {
     if (confirm("Are you sure you want to delete this draft campaign?")) {
-      await deleteCampaign({ campaignId });
+      await deleteCampaign({ adminEmail, campaignId });
     }
   };
 
   const handleCancelCampaign = async (campaignId: Id<"admin_email_campaigns">) => {
     if (confirm("Are you sure you want to cancel this campaign?")) {
-      await cancelCampaign({ campaignId });
+      await cancelCampaign({ adminEmail, campaignId });
     }
   };
 
   if (viewMode === "compose") {
     return (
       <AdminCampaignComposer
+        adminEmail={adminEmail}
         campaignId={selectedCampaignId}
         onBack={handleBack}
       />
@@ -92,6 +95,7 @@ export function AdminCampaignDashboard({ onBack }: AdminCampaignDashboardProps) 
   if (viewMode === "metrics" && selectedCampaignId) {
     return (
       <AdminCampaignMetrics
+        adminEmail={adminEmail}
         campaignId={selectedCampaignId}
         onBack={handleBack}
       />
@@ -105,15 +109,15 @@ export function AdminCampaignDashboard({ onBack }: AdminCampaignDashboardProps) 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="overflow-hidden rounded-3xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-500 p-4 sm:p-6 text-white shadow-lg shadow-purple-950/40 ring-1 ring-purple-300/30">
+      <div className="overflow-hidden rounded-3xl bg-gradient-to-r from-carpet-red-800 via-carpet-red-600 to-red-500 p-4 sm:p-6 text-white shadow-lg shadow-red-950/40 ring-1 ring-red-300/30">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 mb-1">
-              <Globe className="h-4 w-4 text-purple-200" />
-              <p className="text-xs uppercase tracking-[0.25em] text-purple-100">Platform Campaigns</p>
+              <Globe className="h-4 w-4 text-red-200" />
+              <p className="text-xs uppercase tracking-[0.25em] text-red-100">Platform Campaigns</p>
             </div>
             <h2 className="text-xl sm:text-2xl font-semibold tracking-tight">Email All Users</h2>
-            <p className="mt-1 text-sm text-purple-100/90">
+            <p className="mt-1 text-sm text-red-100/90">
               Send platform-wide campaigns to filmmakers, incomplete signups, or fan subscribers
             </p>
           </div>
@@ -126,7 +130,7 @@ export function AdminCampaignDashboard({ onBack }: AdminCampaignDashboardProps) 
             </div>
             <button
               onClick={handleNewCampaign}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white text-purple-600 font-medium hover:bg-purple-50 transition-colors"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white text-red-600 font-medium hover:bg-red-50 transition-colors"
             >
               <Plus className="h-4 w-4" />
               New Campaign
@@ -136,12 +140,12 @@ export function AdminCampaignDashboard({ onBack }: AdminCampaignDashboardProps) 
       </div>
 
       {/* Audience Selector */}
-      <div className="rounded-2xl border border-purple-200 bg-white p-4 shadow-sm dark:border-purple-900/50 dark:bg-[#0f1219]">
+      <div className="rounded-2xl border border-red-200 bg-white p-4 shadow-sm dark:border-red-900/50 dark:bg-[#0f1219]">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">Target Audience</h3>
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className="flex items-center gap-1 text-xs text-purple-600 hover:text-purple-700 dark:text-purple-400"
+            className="flex items-center gap-1 text-xs text-red-600 hover:text-red-700 dark:text-red-400"
           >
             <Filter className="h-3 w-3" />
             Filters
@@ -159,8 +163,8 @@ export function AdminCampaignDashboard({ onBack }: AdminCampaignDashboardProps) 
               onClick={() => setAudienceType(audience.id)}
               className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${
                 audienceType === audience.id
-                  ? "bg-purple-600 text-white shadow-md"
-                  : "bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-300"
+                  ? "bg-red-600 text-white shadow-md"
+                  : "bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-300"
               }`}
             >
               <audience.icon className="h-4 w-4" />
@@ -176,7 +180,7 @@ export function AdminCampaignDashboard({ onBack }: AdminCampaignDashboardProps) 
       {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <StatCard
-          icon={<Users className="h-5 w-5 text-purple-500" />}
+          icon={<Users className="h-5 w-5 text-red-500" />}
           label="Total Reach"
           value={audiencePreview?.count ?? 0}
           subtext="Unique recipients"
@@ -199,29 +203,29 @@ export function AdminCampaignDashboard({ onBack }: AdminCampaignDashboardProps) 
       </div>
 
       {/* Campaign List */}
-      <div className="rounded-3xl border border-purple-200 bg-white shadow-lg shadow-purple-200/50 dark:border-purple-900/50 dark:bg-[#0f1219] dark:shadow-purple-950/30 overflow-hidden">
-        <div className="px-6 py-4 border-b border-purple-100 dark:border-purple-900/50">
+      <div className="rounded-3xl border border-red-200 bg-white shadow-lg shadow-red-200/50 dark:border-red-900/50 dark:bg-[#0f1219] dark:shadow-red-950/30 overflow-hidden">
+        <div className="px-6 py-4 border-b border-red-100 dark:border-red-900/50">
           <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Platform Campaigns</h3>
         </div>
 
         {!campaigns ? (
           <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-purple-500" />
+            <Loader2 className="h-6 w-6 animate-spin text-red-500" />
           </div>
         ) : campaigns.length === 0 ? (
           <div className="text-center py-12">
-            <Globe className="h-12 w-12 text-purple-300 dark:text-purple-800 mx-auto mb-4" />
+            <Globe className="h-12 w-12 text-red-300 dark:text-red-800 mx-auto mb-4" />
             <p className="text-slate-500 dark:text-slate-400 mb-4">No platform campaigns yet</p>
             <button
               onClick={handleNewCampaign}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-purple-600 hover:bg-purple-500 text-white font-medium shadow-md shadow-purple-950/30 transition-colors"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-red-600 hover:bg-red-500 text-white font-medium shadow-md shadow-red-950/30 transition-colors"
             >
               <Plus className="h-4 w-4" />
               Create First Campaign
             </button>
           </div>
         ) : (
-          <div className="divide-y divide-purple-100 dark:divide-purple-900/50">
+          <div className="divide-y divide-red-100 dark:divide-red-900/50">
             {campaigns.map((campaign) => (
               <CampaignRow
                 key={campaign._id}
@@ -251,7 +255,7 @@ function StatCard({
   subtext?: string;
 }) {
   return (
-    <div className="rounded-2xl border border-purple-200 bg-white p-4 shadow-sm dark:border-purple-900/50 dark:bg-[#0f1219]">
+    <div className="rounded-2xl border border-red-200 bg-white p-4 shadow-sm dark:border-red-900/50 dark:bg-[#0f1219]">
       <div className="flex items-center gap-3 mb-2">
         {icon}
         <span className="text-slate-500 dark:text-slate-400 text-sm">{label}</span>
@@ -295,7 +299,7 @@ function CampaignRow({
       case "scheduled":
         return <Clock className="h-4 w-4 text-blue-400" />;
       case "sending":
-        return <Loader2 className="h-4 w-4 text-purple-400 animate-spin" />;
+        return <Loader2 className="h-4 w-4 text-red-400 animate-spin" />;
       case "sent":
         return <CheckCircle className="h-4 w-4 text-green-400" />;
       case "cancelled":
@@ -327,7 +331,7 @@ function CampaignRow({
     : null;
 
   return (
-    <div className="px-6 py-4 hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-colors">
+    <div className="px-6 py-4 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
       <div className="flex items-center justify-between">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3">
@@ -336,8 +340,8 @@ function CampaignRow({
               <h4 className="font-medium text-slate-900 dark:text-white truncate">{campaign.name}</h4>
               <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
                 <span className="truncate">{campaign.subject}</span>
-                <span className="text-purple-400">•</span>
-                <span className="text-purple-600 dark:text-purple-400 text-xs">{getAudienceLabel()}</span>
+                <span className="text-red-400">•</span>
+                <span className="text-red-600 dark:text-red-400 text-xs">{getAudienceLabel()}</span>
               </div>
             </div>
           </div>
@@ -372,7 +376,7 @@ function CampaignRow({
             {campaign.status === "sent" ? (
               <button
                 onClick={onViewMetrics}
-                className="px-3 py-1.5 rounded-full border border-purple-300 bg-white text-purple-700 hover:bg-purple-50 dark:border-purple-800 dark:bg-purple-900/40 dark:text-purple-100 dark:hover:bg-purple-800/50 text-sm transition-colors"
+                className="px-3 py-1.5 rounded-full border border-red-300 bg-white text-red-700 hover:bg-red-50 dark:border-red-800 dark:bg-red-900/40 dark:text-red-100 dark:hover:bg-red-800/50 text-sm transition-colors"
               >
                 View Report
               </button>
@@ -380,7 +384,7 @@ function CampaignRow({
               <>
                 <button
                   onClick={onEdit}
-                  className="px-3 py-1.5 rounded-full bg-purple-600 hover:bg-purple-500 text-white text-sm shadow-sm shadow-purple-950/30 transition-colors"
+                  className="px-3 py-1.5 rounded-full bg-red-600 hover:bg-red-500 text-white text-sm shadow-sm shadow-red-950/30 transition-colors"
                 >
                   Edit
                 </button>
@@ -395,7 +399,7 @@ function CampaignRow({
               <>
                 <button
                   onClick={onEdit}
-                  className="px-3 py-1.5 rounded-full border border-purple-300 bg-white text-purple-700 hover:bg-purple-50 dark:border-purple-800 dark:bg-purple-900/40 dark:text-purple-100 text-sm transition-colors"
+                  className="px-3 py-1.5 rounded-full border border-red-300 bg-white text-red-700 hover:bg-red-50 dark:border-red-800 dark:bg-red-900/40 dark:text-red-100 text-sm transition-colors"
                 >
                   View
                 </button>
@@ -416,9 +420,11 @@ function CampaignRow({
 
 // Placeholder components - will be expanded
 function AdminCampaignComposer({
+  adminEmail,
   campaignId,
   onBack,
 }: {
+  adminEmail: string;
   campaignId: Id<"admin_email_campaigns"> | null;
   onBack: () => void;
 }) {
@@ -431,9 +437,10 @@ function AdminCampaignComposer({
   const createCampaign = useMutation(api.adminEmails.createCampaign);
   const campaign = useQuery(
     api.adminEmails.getCampaign,
-    campaignId ? { campaignId } : "skip"
+    campaignId ? { adminEmail, campaignId } : "skip"
   );
   const audiencePreview = useQuery(api.adminEmails.getAudiencePreview, {
+    adminEmail,
     audienceType,
   });
 
@@ -454,6 +461,7 @@ function AdminCampaignComposer({
     setIsSubmitting(true);
     try {
       await createCampaign({
+        adminEmail,
         name,
         subject,
         bodyHtml,
@@ -488,7 +496,7 @@ function AdminCampaignComposer({
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="rounded-2xl border border-purple-200 bg-white p-6 dark:border-purple-900/50 dark:bg-[#0f1219]">
+        <div className="rounded-2xl border border-red-200 bg-white p-6 dark:border-red-900/50 dark:bg-[#0f1219]">
           <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Campaign Details</h3>
 
           <div className="space-y-4">
@@ -501,7 +509,7 @@ function AdminCampaignComposer({
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g., December Newsletter"
-                className="w-full px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                className="w-full px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white focus:ring-2 focus:ring-red-500 focus:border-transparent"
                 required
               />
             </div>
@@ -515,7 +523,7 @@ function AdminCampaignComposer({
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
                 placeholder="e.g., Big news for filmmakers!"
-                className="w-full px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                className="w-full px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white focus:ring-2 focus:ring-red-500 focus:border-transparent"
                 required
               />
             </div>
@@ -527,7 +535,7 @@ function AdminCampaignComposer({
               <select
                 value={audienceType}
                 onChange={(e) => setAudienceType(e.target.value)}
-                className="w-full px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                className="w-full px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white focus:ring-2 focus:ring-red-500 focus:border-transparent"
               >
                 <option value="all_filmmakers">All Filmmakers ({audiencePreview?.count ?? 0})</option>
                 <option value="incomplete_onboarding">Incomplete Signups</option>
@@ -544,7 +552,7 @@ function AdminCampaignComposer({
                 onChange={(e) => setBodyHtml(e.target.value)}
                 placeholder="<h1>Hello {{name}}</h1><p>Your message here...</p>"
                 rows={10}
-                className="w-full px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white font-mono text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                className="w-full px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white font-mono text-sm focus:ring-2 focus:ring-red-500 focus:border-transparent"
                 required
               />
             </div>
@@ -562,7 +570,7 @@ function AdminCampaignComposer({
           <button
             type="submit"
             disabled={isSubmitting}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-600 text-white font-medium hover:bg-purple-500 disabled:opacity-50 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 text-white font-medium hover:bg-red-500 disabled:opacity-50 transition-colors"
           >
             {isSubmitting ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -578,19 +586,21 @@ function AdminCampaignComposer({
 }
 
 function AdminCampaignMetrics({
+  adminEmail,
   campaignId,
   onBack,
 }: {
+  adminEmail: string;
   campaignId: Id<"admin_email_campaigns">;
   onBack: () => void;
 }) {
-  const campaign = useQuery(api.adminEmails.getCampaign, { campaignId });
-  const sends = useQuery(api.adminEmails.getCampaignSends, { campaignId, limit: 100 });
+  const campaign = useQuery(api.adminEmails.getCampaign, { adminEmail, campaignId });
+  const sends = useQuery(api.adminEmails.getCampaignSends, { adminEmail, campaignId, limit: 100 });
 
   if (!campaign) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-6 w-6 animate-spin text-purple-500" />
+        <Loader2 className="h-6 w-6 animate-spin text-red-500" />
       </div>
     );
   }
@@ -630,7 +640,7 @@ function AdminCampaignMetrics({
           value={campaign.deliveredCount ?? 0}
         />
         <StatCard
-          icon={<Eye className="h-5 w-5 text-purple-500" />}
+          icon={<Eye className="h-5 w-5 text-red-500" />}
           label="Open Rate"
           value={`${openRate}%`}
           subtext={`${campaign.openedCount ?? 0} opens`}
@@ -643,10 +653,10 @@ function AdminCampaignMetrics({
         />
       </div>
 
-      <div className="rounded-2xl border border-purple-200 bg-white p-6 dark:border-purple-900/50 dark:bg-[#0f1219]">
+      <div className="rounded-2xl border border-red-200 bg-white p-6 dark:border-red-900/50 dark:bg-[#0f1219]">
         <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Recent Activity</h3>
         {!sends ? (
-          <Loader2 className="h-5 w-5 animate-spin text-purple-500" />
+          <Loader2 className="h-5 w-5 animate-spin text-red-500" />
         ) : sends.length === 0 ? (
           <p className="text-slate-500 dark:text-slate-400">No sends recorded yet</p>
         ) : (
@@ -658,11 +668,11 @@ function AdminCampaignMetrics({
                   <p className="text-xs text-slate-500 dark:text-slate-400">{send.recipientName}</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  {send.openedAt && <Eye className="h-4 w-4 text-purple-500" />}
+                  {send.openedAt && <Eye className="h-4 w-4 text-red-500" />}
                   {send.clickedAt && <MousePointerClick className="h-4 w-4 text-amber-500" />}
                   <span className={`text-xs px-2 py-1 rounded-full ${
                     send.status === "delivered" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" :
-                    send.status === "opened" ? "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400" :
+                    send.status === "opened" ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" :
                     send.status === "clicked" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" :
                     "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400"
                   }`}>

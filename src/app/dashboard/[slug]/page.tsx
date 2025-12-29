@@ -494,8 +494,8 @@ export default function UserDashboardPage() {
               {activeModule === "admin-emails" && (
                 <AdminEmailCampaigns adminEmail={userEmail} />
               )}
-              {activeModule === "admin-campaigns" && (
-                <AdminCampaignDashboard />
+              {activeModule === "admin-campaigns" && userEmail && (
+                <AdminCampaignDashboard adminEmail={userEmail} />
               )}
               {activeModule === "admin-boosts" && (
                 <AdminBoostTracking adminEmail={userEmail} />
@@ -1500,8 +1500,8 @@ export default function UserDashboardPage() {
             )}
 
             {/* ============ ADMIN: AI EMAIL CAMPAIGNS MODULE ============ */}
-            {activeModule === "admin-campaigns" && isSuperadmin && (
-              <AdminCampaignDashboard />
+            {activeModule === "admin-campaigns" && isSuperadmin && userEmail && (
+              <AdminCampaignDashboard adminEmail={userEmail} />
             )}
 
             {/* ============ ADMIN: BOOST TRACKING MODULE ============ */}

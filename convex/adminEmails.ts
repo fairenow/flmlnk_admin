@@ -10,19 +10,19 @@ import { Id } from "./_generated/dataModel";
 // =============================================================================
 
 /**
- * Helper to validate superadmin access
+ * Helper to validate superadmin access by email
+ * Used for cross-subdomain admin access where Convex auth tokens aren't available
  */
-async function validateSuperadmin(ctx: any) {
-  const identity = await ctx.auth.getUserIdentity();
-  if (!identity) throw new Error("Not authenticated");
+async function validateSuperadminByEmail(ctx: any, email: string) {
+  if (!email) throw new Error("Admin email required");
 
-  const currentUser = await ctx.db
+  const user = await ctx.db
     .query("users")
-    .withIndex("by_authId", (q: any) => q.eq("authId", identity.tokenIdentifier))
+    .withIndex("by_email", (q: any) => q.eq("email", email))
     .unique();
 
-  if (!currentUser?.superadmin) throw new Error("Admin access required");
-  return currentUser;
+  if (!user?.superadmin) throw new Error("Admin access required");
+  return user;
 }
 
 // =============================================================================
@@ -33,9 +33,9 @@ async function validateSuperadmin(ctx: any) {
  * Get all filmmakers (users with profiles) for email campaigns
  */
 export const getAllFilmmakersRecipients = query({
-  args: {},
-  async handler(ctx) {
-    await validateSuperadmin(ctx);
+  args: { adminEmail: v.string() },
+  async handler(ctx, args) {
+    await validateSuperadminByEmail(ctx, args.adminEmail);
 
     const profiles = await ctx.db.query("actor_profiles").collect();
     const users = await ctx.db.query("users").collect();
@@ -61,6 +61,7 @@ export const getAllFilmmakersRecipients = query({
  */
 export const getAudiencePreview = query({
   args: {
+    adminEmail: v.string(),
     audienceType: v.string(),
     filters: v.optional(
       v.object({
@@ -74,7 +75,7 @@ export const getAudiencePreview = query({
     ),
   },
   async handler(ctx, args) {
-    await validateSuperadmin(ctx);
+    await validateSuperadminByEmail(ctx, args.adminEmail);
 
     let recipients: Array<{ email: string; name?: string }> = [];
 
@@ -185,11 +186,12 @@ export const getAudiencePreview = query({
  */
 export const getCampaigns = query({
   args: {
+    adminEmail: v.string(),
     status: v.optional(v.string()),
     limit: v.optional(v.number()),
   },
   async handler(ctx, args) {
-    await validateSuperadmin(ctx);
+    await validateSuperadminByEmail(ctx, args.adminEmail);
 
     let campaignsQuery = ctx.db.query("admin_email_campaigns").order("desc");
 
@@ -222,10 +224,11 @@ export const getCampaigns = query({
  */
 export const getCampaign = query({
   args: {
+    adminEmail: v.string(),
     campaignId: v.id("admin_email_campaigns"),
   },
   async handler(ctx, args) {
-    await validateSuperadmin(ctx);
+    await validateSuperadminByEmail(ctx, args.adminEmail);
 
     const campaign = await ctx.db.get(args.campaignId);
     if (!campaign) return null;
@@ -246,12 +249,13 @@ export const getCampaign = query({
  */
 export const getCampaignSends = query({
   args: {
+    adminEmail: v.string(),
     campaignId: v.id("admin_email_campaigns"),
     status: v.optional(v.string()),
     limit: v.optional(v.number()),
   },
   async handler(ctx, args) {
-    await validateSuperadmin(ctx);
+    await validateSuperadminByEmail(ctx, args.adminEmail);
 
     let sendsQuery = ctx.db
       .query("admin_email_sends")
@@ -275,6 +279,7 @@ export const getCampaignSends = query({
  */
 export const createCampaign = mutation({
   args: {
+    adminEmail: v.string(),
     name: v.string(),
     subject: v.string(),
     preheaderText: v.optional(v.string()),
@@ -297,7 +302,7 @@ export const createCampaign = mutation({
     replyTo: v.optional(v.string()),
   },
   async handler(ctx, args) {
-    const admin = await validateSuperadmin(ctx);
+    const admin = await validateSuperadminByEmail(ctx, args.adminEmail);
 
     const now = Date.now();
     const campaignId = await ctx.db.insert("admin_email_campaigns", {
@@ -338,6 +343,7 @@ export const createCampaign = mutation({
  */
 export const updateCampaign = mutation({
   args: {
+    adminEmail: v.string(),
     campaignId: v.id("admin_email_campaigns"),
     name: v.optional(v.string()),
     subject: v.optional(v.string()),
@@ -361,7 +367,7 @@ export const updateCampaign = mutation({
     replyTo: v.optional(v.string()),
   },
   async handler(ctx, args) {
-    const admin = await validateSuperadmin(ctx);
+    await validateSuperadminByEmail(ctx, args.adminEmail);
 
     const campaign = await ctx.db.get(args.campaignId);
     if (!campaign) throw new Error("Campaign not found");
@@ -391,11 +397,12 @@ export const updateCampaign = mutation({
  */
 export const scheduleCampaign = mutation({
   args: {
+    adminEmail: v.string(),
     campaignId: v.id("admin_email_campaigns"),
     scheduledFor: v.number(),
   },
   async handler(ctx, args) {
-    const admin = await validateSuperadmin(ctx);
+    const admin = await validateSuperadminByEmail(ctx, args.adminEmail);
 
     const campaign = await ctx.db.get(args.campaignId);
     if (!campaign) throw new Error("Campaign not found");
@@ -432,11 +439,12 @@ export const scheduleCampaign = mutation({
  */
 export const cancelCampaign = mutation({
   args: {
+    adminEmail: v.string(),
     campaignId: v.id("admin_email_campaigns"),
     reason: v.optional(v.string()),
   },
   async handler(ctx, args) {
-    const admin = await validateSuperadmin(ctx);
+    const admin = await validateSuperadminByEmail(ctx, args.adminEmail);
 
     const campaign = await ctx.db.get(args.campaignId);
     if (!campaign) throw new Error("Campaign not found");
@@ -472,10 +480,11 @@ export const cancelCampaign = mutation({
  */
 export const deleteCampaign = mutation({
   args: {
+    adminEmail: v.string(),
     campaignId: v.id("admin_email_campaigns"),
   },
   async handler(ctx, args) {
-    const admin = await validateSuperadmin(ctx);
+    const admin = await validateSuperadminByEmail(ctx, args.adminEmail);
 
     const campaign = await ctx.db.get(args.campaignId);
     if (!campaign) throw new Error("Campaign not found");
