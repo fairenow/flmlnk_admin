@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import {
@@ -399,9 +399,9 @@ function AutoCaptureModal({
   folderId?: Id<"image_manager_folders">;
   onSuccess?: (assetIds: Id<"image_manager_assets">[]) => void;
 }) {
-  const [sourceType, setSourceType] = useState<"generated_clip" | "youtube_url">("generated_clip");
-  const [selectedClipId, setSelectedClipId] = useState<Id<"generated_clips"> | null>(null);
-  const [youtubeUrl, setYoutubeUrl] = useState("");
+  // Unified clip selection - value format: "generated:id", "processing:id", or "custom_url"
+  const [selectedClipValue, setSelectedClipValue] = useState<string>("");
+  const [customVideoUrl, setCustomVideoUrl] = useState("");
   const [captureMode, _setCaptureMode] = useState<"interval" | "smart">("interval");
   const [frameCount, setFrameCount] = useState(5);
   const [_intervalSeconds, _setIntervalSeconds] = useState(10);
@@ -416,11 +416,55 @@ function AutoCaptureModal({
   const _videoRef = useRef<HTMLVideoElement>(null);
   const _canvasRef = useRef<HTMLCanvasElement>(null);
 
+  // Query both generated clips (legacy) and processing clips (R2/Klap)
   const generatedClips = useQuery(api.clipGenerator.getGeneratedClipsByProfile, { slug });
+  const processingClipsRaw = useQuery(api.processing.getProcessingClipsByProfile, { slug });
   const generateUploadUrl = useMutation(api.storage.generateUploadUrl);
   const createAssetsBatch = useMutation(api.imageManager.createAssetsBatch);
+  const getProcessingClipsWithUrls = useAction(api.processing.getProcessingClipsWithUrlsByProfile);
 
-  const selectedClip = generatedClips?.find((c) => c._id === selectedClipId);
+  // State for processing clips with signed URLs
+  const [processingClips, setProcessingClips] = useState<Array<{
+    _id: Id<"processing_clips">;
+    title?: string;
+    duration?: number;
+    clipUrl: string | null;
+  }>>([]);
+
+  // Fetch signed URLs for processing clips when they change
+  React.useEffect(() => {
+    const fetchProcessingClipsUrls = async () => {
+      if (!processingClipsRaw || processingClipsRaw.length === 0) {
+        setProcessingClips([]);
+        return;
+      }
+
+      try {
+        const result = await getProcessingClipsWithUrls({ slug });
+        if (result.clips) {
+          setProcessingClips(result.clips.map(c => ({
+            _id: c._id as Id<"processing_clips">,
+            title: c.title,
+            duration: c.duration,
+            clipUrl: c.clipUrl,
+          })));
+        }
+      } catch (err) {
+        console.error("Failed to fetch processing clips URLs:", err);
+      }
+    };
+
+    fetchProcessingClipsUrls();
+  }, [processingClipsRaw, slug, getProcessingClipsWithUrls]);
+
+  // Determine selected clip based on the unified selection value
+  const isCustomUrl = selectedClipValue === "custom_url";
+  const selectedGeneratedClip = selectedClipValue.startsWith("generated:")
+    ? generatedClips?.find((c) => c._id === selectedClipValue.replace("generated:", ""))
+    : null;
+  const selectedProcessingClip = selectedClipValue.startsWith("processing:")
+    ? processingClips?.find((c) => c._id === selectedClipValue.replace("processing:", ""))
+    : null;
 
   // Aspect ratio dimensions
   const aspectRatioDimensions: Record<string, { width: number; height: number }> = {
@@ -431,8 +475,21 @@ function AutoCaptureModal({
   };
 
   const handleStartCapture = async () => {
-    if (sourceType === "generated_clip" && !selectedClip?.downloadUrl) {
-      alert("Please select a clip with a video URL");
+    // Validate selection
+    if (!selectedClipValue) {
+      alert("Please select a video");
+      return;
+    }
+    if (isCustomUrl && !customVideoUrl.trim()) {
+      alert("Please enter a video URL");
+      return;
+    }
+    if (selectedGeneratedClip && !selectedGeneratedClip.downloadUrl) {
+      alert("Selected clip doesn't have a video URL");
+      return;
+    }
+    if (selectedProcessingClip && !selectedProcessingClip.clipUrl) {
+      alert("Selected clip doesn't have a video URL");
       return;
     }
 
@@ -441,17 +498,23 @@ function AutoCaptureModal({
     setCapturedFrames([]);
     setProgress(0);
 
-    const videoUrl = sourceType === "generated_clip"
-      ? selectedClip?.downloadUrl
-      : youtubeUrl;
+    // Get the video URL based on selection
+    let captureVideoUrl: string | undefined;
+    if (selectedGeneratedClip) {
+      captureVideoUrl = selectedGeneratedClip.downloadUrl;
+    } else if (selectedProcessingClip) {
+      captureVideoUrl = selectedProcessingClip.clipUrl ?? undefined;
+    } else if (isCustomUrl) {
+      captureVideoUrl = customVideoUrl;
+    }
 
-    if (!videoUrl) return;
+    if (!captureVideoUrl) return;
 
     try {
       // Create a video element to load the video
       const video = document.createElement("video");
       video.crossOrigin = "anonymous";
-      video.src = videoUrl;
+      video.src = captureVideoUrl;
       video.muted = true;
 
       await new Promise<void>((resolve, reject) => {
@@ -593,6 +656,25 @@ function AutoCaptureModal({
         const { storageId } = await response.json();
         const targetDims = aspectRatioDimensions[aspectRatio];
 
+        // Determine source info based on selection
+        let assetSourceType: string;
+        let assetSourceId: string | undefined;
+        let assetSourceTitle: string | undefined;
+
+        if (selectedGeneratedClip) {
+          assetSourceType = "generated_clip";
+          assetSourceId = selectedGeneratedClip._id;
+          assetSourceTitle = selectedGeneratedClip.title;
+        } else if (selectedProcessingClip) {
+          assetSourceType = "processing_clip";
+          assetSourceId = selectedProcessingClip._id;
+          assetSourceTitle = selectedProcessingClip.title || "Processing Clip";
+        } else {
+          assetSourceType = "video_url";
+          assetSourceId = customVideoUrl;
+          assetSourceTitle = "Custom Video URL";
+        }
+
         assets.push({
           name: `Frame ${i + 1} - ${formatTimestamp(frame.timestamp)}`,
           storageId,
@@ -601,9 +683,9 @@ function AutoCaptureModal({
           aspectRatio,
           fileSize: frame.blob.size,
           mimeType: "image/png",
-          sourceType: sourceType === "generated_clip" ? "generated_clip" : "youtube_url",
-          sourceId: sourceType === "generated_clip" ? selectedClipId?.toString() : youtubeUrl,
-          sourceTitle: sourceType === "generated_clip" ? selectedClip?.title : "YouTube Video",
+          sourceType: assetSourceType,
+          sourceId: assetSourceId,
+          sourceTitle: assetSourceTitle,
           sourceTimestamp: frame.timestamp,
           assetCategory,
         });
@@ -633,8 +715,8 @@ function AutoCaptureModal({
     setCurrentStep("config");
     setCapturedFrames([]);
     setProgress(0);
-    setSelectedClipId(null);
-    setYoutubeUrl("");
+    setSelectedClipValue("");
+    setCustomVideoUrl("");
   };
 
   const formatTimestamp = (seconds: number): string => {
@@ -680,68 +762,74 @@ function AutoCaptureModal({
         <div className="p-6">
           {currentStep === "config" && (
             <div className="space-y-6">
-              {/* Source Selection */}
+              {/* Video Selection */}
               <div>
                 <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">
-                  Video Source
+                  Select Video
                 </label>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setSourceType("generated_clip")}
-                    className={`flex flex-1 items-center justify-center gap-2 rounded-lg border px-4 py-3 text-sm font-medium transition-colors ${
-                      sourceType === "generated_clip"
-                        ? "border-red-500 bg-red-50 text-red-700 dark:border-red-500 dark:bg-red-900/20 dark:text-red-400"
-                        : "border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
-                    }`}
-                  >
-                    <Sparkles className="h-4 w-4" />
-                    Generated Clips
-                  </button>
-                  <button
-                    onClick={() => setSourceType("youtube_url")}
-                    className={`flex flex-1 items-center justify-center gap-2 rounded-lg border px-4 py-3 text-sm font-medium transition-colors ${
-                      sourceType === "youtube_url"
-                        ? "border-red-500 bg-red-50 text-red-700 dark:border-red-500 dark:bg-red-900/20 dark:text-red-400"
-                        : "border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
-                    }`}
-                  >
-                    <Video className="h-4 w-4" />
-                    Video URL
-                  </button>
-                </div>
+                <select
+                  value={selectedClipValue}
+                  onChange={(e) => {
+                    setSelectedClipValue(e.target.value);
+                    if (e.target.value !== "custom_url") {
+                      setCustomVideoUrl("");
+                    }
+                  }}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                >
+                  <option value="">Select a video...</option>
+
+                  {/* Generated Clips */}
+                  {generatedClips && generatedClips.length > 0 && (
+                    <optgroup label="Generated Clips">
+                      {generatedClips.map((clip) => (
+                        <option key={clip._id} value={`generated:${clip._id}`}>
+                          {clip.title} ({Math.round(clip.duration)}s)
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+
+                  {/* R2/Processing Clips */}
+                  {processingClips && processingClips.length > 0 && (
+                    <optgroup label="R2 Clips">
+                      {processingClips.map((clip) => (
+                        <option key={clip._id} value={`processing:${clip._id}`}>
+                          {clip.title || `Clip ${clip._id.slice(-6)}`} ({Math.round(clip.duration || 0)}s)
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+
+                  {/* Custom URL option */}
+                  <optgroup label="Other">
+                    <option value="custom_url">Enter YouTube URL...</option>
+                  </optgroup>
+                </select>
+
+                {(!generatedClips || generatedClips.length === 0) && (!processingClips || processingClips.length === 0) && (
+                  <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                    No clips available. Generate clips first or enter a YouTube URL.
+                  </p>
+                )}
               </div>
 
-              {/* Source-specific input */}
-              {sourceType === "generated_clip" ? (
+              {/* Custom URL Input (shown when "Enter YouTube URL..." is selected) */}
+              {isCustomUrl && (
                 <div>
                   <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">
-                    Select Clip
-                  </label>
-                  <select
-                    value={selectedClipId || ""}
-                    onChange={(e) => setSelectedClipId(e.target.value as Id<"generated_clips">)}
-                    className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                  >
-                    <option value="">Select a clip...</option>
-                    {generatedClips?.map((clip) => (
-                      <option key={clip._id} value={clip._id}>
-                        {clip.title} ({Math.round(clip.duration)}s)
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ) : (
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">
-                    Video URL
+                    YouTube URL
                   </label>
                   <input
                     type="url"
-                    value={youtubeUrl}
-                    onChange={(e) => setYoutubeUrl(e.target.value)}
-                    placeholder="https://..."
+                    value={customVideoUrl}
+                    onChange={(e) => setCustomVideoUrl(e.target.value)}
+                    placeholder="https://www.youtube.com/watch?v=..."
                     className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                   />
+                  <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                    Enter a YouTube video URL to capture frames from
+                  </p>
                 </div>
               )}
 
@@ -859,7 +947,7 @@ function AutoCaptureModal({
               </button>
               <button
                 onClick={handleStartCapture}
-                disabled={(sourceType === "generated_clip" && !selectedClipId) || (sourceType === "youtube_url" && !youtubeUrl)}
+                disabled={!selectedClipValue || (isCustomUrl && !customVideoUrl.trim())}
                 className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Camera className="h-4 w-4" />
@@ -1148,6 +1236,388 @@ function UploadModal({
 }
 
 // ============================================================================
+// AI IMAGE GENERATION MODAL
+// ============================================================================
+function AIGenerateModal({
+  isOpen,
+  onClose,
+  slug,
+  projectId,
+  folderId,
+  sourceAsset,
+  onSuccess,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  slug: string;
+  projectId: Id<"image_manager_projects">;
+  folderId?: Id<"image_manager_folders">;
+  sourceAsset: Asset;
+  onSuccess?: (assetId: Id<"image_manager_assets">) => void;
+}) {
+  const [prompt, setPrompt] = useState("");
+  const [aspectRatio, setAspectRatio] = useState("1:1");
+  const [assetCategory, setAssetCategory] = useState("social_media");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatedImage, setGeneratedImage] = useState<{ base64: string; mimeType: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [currentStep, setCurrentStep] = useState<"config" | "preview">("config");
+
+  const generateAIImage = useAction(api.imageManager.generateAIImage);
+  const saveAIGeneratedImage = useAction(api.imageManager.saveAIGeneratedImage);
+
+  // Aspect ratio dimensions
+  const aspectRatioDimensions: Record<string, { width: number; height: number }> = {
+    "1:1": { width: 1024, height: 1024 },
+    "16:9": { width: 1536, height: 864 },
+    "9:16": { width: 864, height: 1536 },
+    "4:3": { width: 1408, height: 1056 },
+    "3:4": { width: 1056, height: 1408 },
+  };
+
+  const handleGenerate = async () => {
+    if (!prompt.trim()) {
+      setError("Please enter a prompt");
+      return;
+    }
+
+    setIsGenerating(true);
+    setError(null);
+
+    try {
+      const result = await generateAIImage({
+        slug,
+        sourceImageUrl: sourceAsset.url,
+        prompt: prompt.trim(),
+        aspectRatio,
+      });
+
+      if (result.success && result.imageBase64) {
+        setGeneratedImage({
+          base64: result.imageBase64,
+          mimeType: result.mimeType || "image/png",
+        });
+        setCurrentStep("preview");
+      } else {
+        setError(result.error || "Failed to generate image");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An error occurred");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!generatedImage) return;
+
+    setIsGenerating(true);
+    setError(null);
+
+    try {
+      const dims = aspectRatioDimensions[aspectRatio];
+      const result = await saveAIGeneratedImage({
+        slug,
+        projectId,
+        folderId,
+        imageBase64: generatedImage.base64,
+        mimeType: generatedImage.mimeType,
+        name: `AI: ${prompt.slice(0, 30)}...`,
+        prompt,
+        sourceAssetId: sourceAsset._id,
+        assetCategory,
+        aspectRatio,
+        width: dims.width,
+        height: dims.height,
+      });
+
+      if (result.success && result.assetId) {
+        onSuccess?.(result.assetId);
+        onClose();
+        resetState();
+      } else {
+        setError(result.error || "Failed to save image");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save image");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const resetState = () => {
+    setPrompt("");
+    setGeneratedImage(null);
+    setError(null);
+    setCurrentStep("config");
+  };
+
+  // Suggested prompts for quick selection
+  const suggestedPrompts = [
+    "Create a cinematic movie poster version",
+    "Add dramatic lighting and shadows",
+    "Transform into a vintage film aesthetic",
+    "Create a minimalist promotional version",
+    "Add dynamic motion blur effects",
+    "Convert to a neon cyberpunk style",
+    "Create an elegant black and white version",
+    "Add social media-ready text overlays",
+  ];
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/80 backdrop-blur-sm p-4">
+      <div className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl dark:bg-slate-900">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-slate-200 p-6 dark:border-slate-700">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-pink-500">
+              <Sparkles className="h-5 w-5 text-white" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                AI Image Generator
+              </h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {currentStep === "config" ? "Create variations using AI" : "Preview generated image"}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              onClose();
+              resetState();
+            }}
+            className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="p-6">
+          {currentStep === "config" && (
+            <div className="grid gap-6 lg:grid-cols-2">
+              {/* Source Image Preview */}
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                  Source Image
+                </label>
+                <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
+                  <img
+                    src={sourceAsset.url}
+                    alt={sourceAsset.name}
+                    className="h-48 w-full object-cover"
+                  />
+                </div>
+                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                  {sourceAsset.name}
+                </p>
+              </div>
+
+              {/* Configuration */}
+              <div className="space-y-4">
+                {/* Prompt Input */}
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                    Generation Prompt
+                  </label>
+                  <textarea
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    placeholder="Describe how you want to transform this image..."
+                    rows={3}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  />
+                </div>
+
+                {/* Suggested Prompts */}
+                <div>
+                  <label className="mb-2 block text-xs font-medium text-slate-500 dark:text-slate-400">
+                    Quick Prompts
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {suggestedPrompts.slice(0, 4).map((suggested, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setPrompt(suggested)}
+                        className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600 transition-colors hover:border-purple-300 hover:bg-purple-50 hover:text-purple-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-400 dark:hover:border-purple-500 dark:hover:bg-purple-900/20 dark:hover:text-purple-400"
+                      >
+                        {suggested.length > 30 ? suggested.slice(0, 30) + "..." : suggested}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Aspect Ratio */}
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                    Output Aspect Ratio
+                  </label>
+                  <select
+                    value={aspectRatio}
+                    onChange={(e) => setAspectRatio(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  >
+                    <option value="1:1">1:1 (Square)</option>
+                    <option value="16:9">16:9 (Landscape)</option>
+                    <option value="9:16">9:16 (Portrait)</option>
+                    <option value="4:3">4:3 (Standard)</option>
+                    <option value="3:4">3:4 (Tall)</option>
+                  </select>
+                </div>
+
+                {/* Category */}
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                    Asset Category
+                  </label>
+                  <select
+                    value={assetCategory}
+                    onChange={(e) => setAssetCategory(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  >
+                    <option value="social_media">Social Media</option>
+                    <option value="paid_ad">Paid Ads</option>
+                    <option value="thumbnail">Thumbnails</option>
+                    <option value="press">Press Kit</option>
+                    <option value="promotional">Promotional</option>
+                    <option value="custom">Custom</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {currentStep === "preview" && generatedImage && (
+            <div className="space-y-4">
+              <div className="grid gap-4 lg:grid-cols-2">
+                {/* Original */}
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                    Original
+                  </label>
+                  <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
+                    <img
+                      src={sourceAsset.url}
+                      alt="Original"
+                      className="h-64 w-full object-cover"
+                    />
+                  </div>
+                </div>
+                {/* Generated */}
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                    AI Generated
+                  </label>
+                  <div className="overflow-hidden rounded-xl border-2 border-purple-500 dark:border-purple-400">
+                    <img
+                      src={`data:${generatedImage.mimeType};base64,${generatedImage.base64}`}
+                      alt="Generated"
+                      className="h-64 w-full object-cover"
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-lg bg-slate-100 p-3 dark:bg-slate-800">
+                <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Prompt used:</p>
+                <p className="text-sm text-slate-700 dark:text-slate-300">{prompt}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Error Message */}
+          {error && (
+            <div className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
+              {error}
+            </div>
+          )}
+
+          {/* Loading State */}
+          {isGenerating && currentStep === "config" && (
+            <div className="mt-6 flex flex-col items-center justify-center py-8">
+              <Loader2 className="h-12 w-12 animate-spin text-purple-500" />
+              <p className="mt-4 text-lg font-medium text-slate-900 dark:text-white">
+                Generating your image...
+              </p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                This may take a few moments
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-end gap-3 border-t border-slate-200 p-6 dark:border-slate-700">
+          {currentStep === "config" && (
+            <>
+              <button
+                onClick={() => {
+                  onClose();
+                  resetState();
+                }}
+                className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleGenerate}
+                disabled={!prompt.trim() || isGenerating}
+                className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 px-4 py-2.5 text-sm font-medium text-white hover:from-purple-700 hover:to-pink-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isGenerating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4" />
+                    Generate Image
+                  </>
+                )}
+              </button>
+            </>
+          )}
+
+          {currentStep === "preview" && (
+            <>
+              <button
+                onClick={() => {
+                  setCurrentStep("config");
+                  setGeneratedImage(null);
+                }}
+                className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                Regenerate
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={isGenerating}
+                className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 px-4 py-2.5 text-sm font-medium text-white hover:from-purple-700 hover:to-pink-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isGenerating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Check className="h-4 w-4" />
+                    Save to Project
+                  </>
+                )}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
 // FOLDER TREE ITEM
 // ============================================================================
 function FolderTreeItem({
@@ -1242,6 +1712,7 @@ function AssetCard({
   onToggleFavorite,
   onDelete,
   onDownload,
+  onAIGenerate,
 }: {
   asset: Asset;
   isSelected: boolean;
@@ -1249,6 +1720,7 @@ function AssetCard({
   onToggleFavorite: (id: Id<"image_manager_assets">) => void;
   onDelete: (id: Id<"image_manager_assets">) => void;
   onDownload: (asset: Asset) => void;
+  onAIGenerate?: (asset: Asset) => void;
 }) {
   return (
     <div
@@ -1302,6 +1774,18 @@ function AssetCard({
 
         {/* Hover Actions */}
         <div className="absolute bottom-2 left-2 right-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+          {onAIGenerate && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onAIGenerate(asset);
+              }}
+              className="rounded-lg bg-gradient-to-r from-purple-500/80 to-pink-500/80 px-2 py-1.5 text-white backdrop-blur-sm hover:from-purple-600 hover:to-pink-600"
+              title="AI Generate"
+            >
+              <Sparkles className="h-4 w-4" />
+            </button>
+          )}
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -1360,6 +1844,8 @@ function ProjectView({
   const [showNewFolderModal, setShowNewFolderModal] = useState(false);
   const [showAutoCaptureModal, setShowAutoCaptureModal] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [showAIGenerateModal, setShowAIGenerateModal] = useState(false);
+  const [aiGenerateSourceAsset, setAIGenerateSourceAsset] = useState<Asset | null>(null);
   const [filterCategory, setFilterCategory] = useState<string | null>(null);
   const [mobileView, setMobileView] = useState<"folders" | "assets">("folders");
 
@@ -1713,6 +2199,10 @@ function ProjectView({
                     onToggleFavorite={handleToggleFavorite}
                     onDelete={handleDeleteAsset}
                     onDownload={handleDownload}
+                    onAIGenerate={(asset) => {
+                      setAIGenerateSourceAsset(asset);
+                      setShowAIGenerateModal(true);
+                    }}
                   />
                 ))}
               </div>
@@ -1745,6 +2235,20 @@ function ProjectView({
         projectId={project._id}
         folderId={selectedFolderId}
       />
+
+      {aiGenerateSourceAsset && (
+        <AIGenerateModal
+          isOpen={showAIGenerateModal}
+          onClose={() => {
+            setShowAIGenerateModal(false);
+            setAIGenerateSourceAsset(null);
+          }}
+          slug={slug}
+          projectId={project._id}
+          folderId={selectedFolderId}
+          sourceAsset={aiGenerateSourceAsset}
+        />
+      )}
     </div>
   );
 }

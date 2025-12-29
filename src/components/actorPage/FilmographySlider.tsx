@@ -37,6 +37,11 @@ type FilmographySliderProps = {
   primaryColor?: string;
   selectedProjectId?: Id<"projects"> | null;
   onSelectProject?: (projectId: Id<"projects">) => void;
+  // Event tracking callbacks
+  onFilmCardView?: (projectId: string, projectTitle: string) => void;
+  onFilmCardClick?: (projectId: string, projectTitle: string) => void;
+  onFilmTrailerClick?: (projectId: string, projectTitle: string) => void;
+  onFilmWatchCtaClick?: (projectId: string, projectTitle: string, ctaUrl: string) => void;
 };
 
 // Component to handle poster image with error fallback
@@ -83,6 +88,10 @@ export const FilmographySlider: FC<FilmographySliderProps> = ({
   primaryColor = "#FF1744",
   selectedProjectId,
   onSelectProject,
+  onFilmCardView,
+  onFilmCardClick,
+  onFilmTrailerClick,
+  onFilmWatchCtaClick,
 }) => {
   // Build a map of projectId -> clip for quick lookup
   const projectClipMap = useMemo(() => {
@@ -95,17 +104,40 @@ export const FilmographySlider: FC<FilmographySliderProps> = ({
     return map;
   }, [clips]);
 
+  // Track viewport size to determine scroll behavior
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkViewport = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+
+    checkViewport();
+    window.addEventListener("resize", checkViewport);
+    return () => window.removeEventListener("resize", checkViewport);
+  }, []);
+
+  // Determine if we should disable infinite scroll and duplication
+  // Mobile: 1 film or less, Desktop: 4 films or less
+  const shouldDisableScroll = isMobile
+    ? projects.length <= 1
+    : projects.length <= 4;
+
   if (projects.length === 0) return null;
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const isAdjustingRef = useRef(false);
 
+  // Only create looped projects when scrolling is enabled
   const loopedProjects = useMemo(
-    () => [...projects, ...projects, ...projects],
-    [projects]
+    () => (shouldDisableScroll ? projects : [...projects, ...projects, ...projects]),
+    [projects, shouldDisableScroll]
   );
 
   const ensureLoopingScrollPosition = useCallback(() => {
+    // Skip infinite scroll logic when scrolling is disabled
+    if (shouldDisableScroll) return;
+
     const container = scrollContainerRef.current;
     if (!container || isAdjustingRef.current) return;
 
@@ -126,26 +158,63 @@ export const FilmographySlider: FC<FilmographySliderProps> = ({
         isAdjustingRef.current = false;
       });
     }
-  }, []);
+  }, [shouldDisableScroll]);
 
   // Initialize scroll position to the middle copy so we can scroll in both directions
   useEffect(() => {
+    // Skip initialization when scrolling is disabled
+    if (shouldDisableScroll) return;
+
     const container = scrollContainerRef.current;
     if (!container) return;
 
     const segmentWidth = container.scrollWidth / 3;
     container.scrollLeft = segmentWidth;
-  }, [projects.length]);
+  }, [projects.length, shouldDisableScroll]);
 
   // Watch scroll position and reset when we reach the edges of the middle copy
   useEffect(() => {
+    // Skip scroll event listener when scrolling is disabled
+    if (shouldDisableScroll) return;
+
     const container = scrollContainerRef.current;
     if (!container) return;
 
     const handleScroll = () => ensureLoopingScrollPosition();
     container.addEventListener("scroll", handleScroll);
     return () => container.removeEventListener("scroll", handleScroll);
-  }, [ensureLoopingScrollPosition]);
+  }, [ensureLoopingScrollPosition, shouldDisableScroll]);
+
+  // Track card views using IntersectionObserver
+  const viewedCardsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!onFilmCardView) return;
+
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const projectId = entry.target.getAttribute("data-project-id");
+            const projectTitle = entry.target.getAttribute("data-project-title");
+            if (projectId && projectTitle && !viewedCardsRef.current.has(projectId)) {
+              viewedCardsRef.current.add(projectId);
+              onFilmCardView(projectId, projectTitle);
+            }
+          }
+        });
+      },
+      { root: container, threshold: 0.5 }
+    );
+
+    // Observe all project cards
+    const cards = container.querySelectorAll("[data-project-id]");
+    cards.forEach((card) => observer.observe(card));
+
+    return () => observer.disconnect();
+  }, [onFilmCardView, loopedProjects]);
 
   return (
     <section className="bg-[#05040A] py-12">
@@ -161,7 +230,11 @@ export const FilmographySlider: FC<FilmographySliderProps> = ({
         <div className="relative -mx-4 px-4">
           <div
             ref={scrollContainerRef}
-            className="flex gap-5 overflow-x-auto pb-4 snap-x snap-mandatory scrollbar-hide"
+            className={`flex gap-5 pb-4 ${
+              shouldDisableScroll
+                ? "flex-wrap justify-center"
+                : "overflow-x-auto snap-x snap-mandatory scrollbar-hide"
+            }`}
             style={{
               scrollbarWidth: "none",
               msOverflowStyle: "none",
@@ -176,9 +249,11 @@ export const FilmographySlider: FC<FilmographySliderProps> = ({
                 <div
                   key={`${project._id}-${index}`}
                   className="flex-shrink-0 snap-start w-[260px] sm:w-[280px] md:w-[300px]"
+                  data-project-id={project._id}
+                  data-project-title={project.title}
                 >
                   <div
-                    className={`group relative overflow-hidden rounded-xl border bg-[#0c0911] transition-all duration-300 hover:shadow-lg hover:shadow-black/40 ${
+                    className={`group relative overflow-hidden rounded-xl border bg-[#0c0911] transition-all duration-300 hover:shadow-lg hover:shadow-black/40 cursor-pointer ${
                       isSelected
                         ? "border-2 ring-2 ring-offset-2 ring-offset-black"
                         : "border-white/5 hover:border-white/20"
@@ -187,6 +262,7 @@ export const FilmographySlider: FC<FilmographySliderProps> = ({
                       borderColor: isSelected ? primaryColor : undefined,
                       ringColor: isSelected ? primaryColor : undefined,
                     }}
+                    onClick={() => onFilmCardClick?.(project._id, project.title)}
                   >
                     {/* Selected indicator */}
                     {isSelected && (
@@ -214,7 +290,11 @@ export const FilmographySlider: FC<FilmographySliderProps> = ({
                         {/* Play Trailer button - only if project has a trailer */}
                         {hasTrailer && onSelectProject && !isSelected && (
                           <button
-                            onClick={() => onSelectProject(project._id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onSelectProject(project._id);
+                              onFilmTrailerClick?.(project._id, project.title);
+                            }}
                             className="flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold text-white shadow-lg transition-transform duration-200 hover:scale-105 bg-gradient-to-r from-carpet-red-800/90 via-carpet-red-600/90 to-red-500/80"
                           >
                             <Play className="w-4 h-4" fill="currentColor" />
@@ -228,6 +308,10 @@ export const FilmographySlider: FC<FilmographySliderProps> = ({
                             href={project.primaryWatchUrl}
                             target="_blank"
                             rel="noopener noreferrer"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onFilmWatchCtaClick?.(project._id, project.title, project.primaryWatchUrl!);
+                            }}
                             className={`rounded-full px-5 py-2 text-sm font-semibold shadow-lg transition-transform duration-200 hover:scale-105 ${
                               hasTrailer && !isSelected
                                 ? "bg-white/20 text-white backdrop-blur-sm"

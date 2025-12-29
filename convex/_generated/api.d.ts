@@ -8,14 +8,11 @@
  * @module
  */
 
-import type * as adminAnalytics from "../adminAnalytics.js";
-import type * as adminCampaigns from "../adminCampaigns.js";
 import type * as ai from "../ai.js";
 import type * as analytics from "../analytics.js";
 import type * as audienceManagement from "../audienceManagement.js";
+import type * as deepAnalytics from "../deepAnalytics.js";
 import type * as auth from "../auth.js";
-import type * as backgroundJobs from "../backgroundJobs.js";
-import type * as boost from "../boost.js";
 import type * as campaignGeneration from "../campaignGeneration.js";
 import type * as campaignMetrics from "../campaignMetrics.js";
 import type * as campaignScheduler from "../campaignScheduler.js";
@@ -24,10 +21,7 @@ import type * as campaigns from "../campaigns.js";
 import type * as clipGenerator from "../clipGenerator.js";
 import type * as comments from "../comments.js";
 import type * as crons from "../crons.js";
-import type * as deepAnalytics from "../deepAnalytics.js";
 import type * as devDebug from "../devDebug.js";
-import type * as domParserPolyfill from "../domParserPolyfill.js";
-import type * as editorChat from "../editorChat.js";
 import type * as email from "../email.js";
 import type * as emailScheduler from "../emailScheduler.js";
 import type * as files from "../files.js";
@@ -36,14 +30,11 @@ import type * as gifGenerator from "../gifGenerator.js";
 import type * as http from "../http.js";
 import type * as imageManager from "../imageManager.js";
 import type * as inquiries from "../inquiries.js";
-import type * as klap from "../klap.js";
 import type * as mediaAssets from "../mediaAssets.js";
 import type * as memeGenerator from "../memeGenerator.js";
 import type * as newsletter from "../newsletter.js";
 import type * as overview from "../overview.js";
-import type * as platformCampaigns from "../platformCampaigns.js";
 import type * as processing from "../processing.js";
-import type * as profileScraper from "../profileScraper.js";
 import type * as r2 from "../r2.js";
 import type * as socialPosting from "../socialPosting.js";
 import type * as socialPostingAI from "../socialPostingAI.js";
@@ -51,12 +42,18 @@ import type * as socialPostingAdapters from "../socialPostingAdapters.js";
 import type * as socialPostingOAuth from "../socialPostingOAuth.js";
 import type * as socialPostingScheduler from "../socialPostingScheduler.js";
 import type * as storage from "../storage.js";
-import type * as trailerJobs from "../trailerJobs.js";
-import type * as trailerProfiles from "../trailerProfiles.js";
 import type * as usageMetrics from "../usageMetrics.js";
 import type * as users from "../users.js";
 import type * as videoJobs from "../videoJobs.js";
 import type * as videoJobsDb from "../videoJobsDb.js";
+
+export type FilmmakerFunctions = typeof filmmakers;
+
+export type GetOnboardingStatusResult = {
+  isAuthenticated: boolean;
+  hasProfile: boolean;
+  slug: string | null;
+};
 
 import type {
   ApiFromModules,
@@ -65,14 +62,11 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  adminAnalytics: typeof adminAnalytics;
-  adminCampaigns: typeof adminCampaigns;
   ai: typeof ai;
   analytics: typeof analytics;
   audienceManagement: typeof audienceManagement;
   auth: typeof auth;
-  backgroundJobs: typeof backgroundJobs;
-  boost: typeof boost;
+  deepAnalytics: typeof deepAnalytics;
   campaignGeneration: typeof campaignGeneration;
   campaignMetrics: typeof campaignMetrics;
   campaignScheduler: typeof campaignScheduler;
@@ -81,10 +75,7 @@ declare const fullApi: ApiFromModules<{
   clipGenerator: typeof clipGenerator;
   comments: typeof comments;
   crons: typeof crons;
-  deepAnalytics: typeof deepAnalytics;
   devDebug: typeof devDebug;
-  domParserPolyfill: typeof domParserPolyfill;
-  editorChat: typeof editorChat;
   email: typeof email;
   emailScheduler: typeof emailScheduler;
   files: typeof files;
@@ -93,14 +84,11 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   imageManager: typeof imageManager;
   inquiries: typeof inquiries;
-  klap: typeof klap;
   mediaAssets: typeof mediaAssets;
   memeGenerator: typeof memeGenerator;
   newsletter: typeof newsletter;
   overview: typeof overview;
-  platformCampaigns: typeof platformCampaigns;
   processing: typeof processing;
-  profileScraper: typeof profileScraper;
   r2: typeof r2;
   socialPosting: typeof socialPosting;
   socialPostingAI: typeof socialPostingAI;
@@ -108,13 +96,11 @@ declare const fullApi: ApiFromModules<{
   socialPostingOAuth: typeof socialPostingOAuth;
   socialPostingScheduler: typeof socialPostingScheduler;
   storage: typeof storage;
-  trailerJobs: typeof trailerJobs;
-  trailerProfiles: typeof trailerProfiles;
   usageMetrics: typeof usageMetrics;
   users: typeof users;
   videoJobs: typeof videoJobs;
   videoJobsDb: typeof videoJobsDb;
-}>;
+}>; 
 
 /**
  * A utility for referencing Convex functions in your app's public API.
@@ -282,6 +268,10 @@ export declare const components: {
                   lastRequest?: null | number;
                 };
                 model: "rateLimit";
+              }
+            | {
+                data: { count: number; key: string; lastRequest: number };
+                model: "ratelimit";
               };
           onCreateHandle?: string;
           select?: Array<string>;
@@ -636,6 +626,32 @@ export declare const components: {
               }
             | {
                 model: "rateLimit";
+                where?: Array<{
+                  connector?: "AND" | "OR";
+                  field: "key" | "count" | "lastRequest" | "_id";
+                  operator?:
+                    | "lt"
+                    | "lte"
+                    | "gt"
+                    | "gte"
+                    | "eq"
+                    | "in"
+                    | "not_in"
+                    | "ne"
+                    | "contains"
+                    | "starts_with"
+                    | "ends_with";
+                  value:
+                    | string
+                    | number
+                    | boolean
+                    | Array<string>
+                    | Array<number>
+                    | null;
+                }>;
+              }
+            | {
+                model: "ratelimit";
                 where?: Array<{
                   connector?: "AND" | "OR";
                   field: "key" | "count" | "lastRequest" | "_id";
@@ -1043,6 +1059,32 @@ export declare const components: {
                     | Array<number>
                     | null;
                 }>;
+              }
+            | {
+                model: "ratelimit";
+                where?: Array<{
+                  connector?: "AND" | "OR";
+                  field: "key" | "count" | "lastRequest" | "_id";
+                  operator?:
+                    | "lt"
+                    | "lte"
+                    | "gt"
+                    | "gte"
+                    | "eq"
+                    | "in"
+                    | "not_in"
+                    | "ne"
+                    | "contains"
+                    | "starts_with"
+                    | "ends_with";
+                  value:
+                    | string
+                    | number
+                    | boolean
+                    | Array<string>
+                    | Array<number>
+                    | null;
+                }>;
               };
           onDeleteHandle?: string;
         },
@@ -1064,7 +1106,8 @@ export declare const components: {
             | "oauthAccessToken"
             | "oauthConsent"
             | "jwks"
-            | "rateLimit";
+            | "rateLimit"
+            | "ratelimit";
           offset?: number;
           paginationOpts: {
             cursor: string | null;
@@ -1116,7 +1159,8 @@ export declare const components: {
             | "oauthAccessToken"
             | "oauthConsent"
             | "jwks"
-            | "rateLimit";
+            | "rateLimit"
+            | "ratelimit";
           select?: Array<string>;
           where?: Array<{
             connector?: "AND" | "OR";
@@ -1625,6 +1669,33 @@ export declare const components: {
                     | Array<number>
                     | null;
                 }>;
+              }
+            | {
+                model: "ratelimit";
+                update: { count?: number; key?: string; lastRequest?: number };
+                where?: Array<{
+                  connector?: "AND" | "OR";
+                  field: "key" | "count" | "lastRequest" | "_id";
+                  operator?:
+                    | "lt"
+                    | "lte"
+                    | "gt"
+                    | "gte"
+                    | "eq"
+                    | "in"
+                    | "not_in"
+                    | "ne"
+                    | "contains"
+                    | "starts_with"
+                    | "ends_with";
+                  value:
+                    | string
+                    | number
+                    | boolean
+                    | Array<string>
+                    | Array<number>
+                    | null;
+                }>;
               };
           onUpdateHandle?: string;
           paginationOpts: {
@@ -2090,6 +2161,33 @@ export declare const components: {
                   key?: null | string;
                   lastRequest?: null | number;
                 };
+                where?: Array<{
+                  connector?: "AND" | "OR";
+                  field: "key" | "count" | "lastRequest" | "_id";
+                  operator?:
+                    | "lt"
+                    | "lte"
+                    | "gt"
+                    | "gte"
+                    | "eq"
+                    | "in"
+                    | "not_in"
+                    | "ne"
+                    | "contains"
+                    | "starts_with"
+                    | "ends_with";
+                  value:
+                    | string
+                    | number
+                    | boolean
+                    | Array<string>
+                    | Array<number>
+                    | null;
+                }>;
+              }
+            | {
+                model: "ratelimit";
+                update: { count?: number; key?: string; lastRequest?: number };
                 where?: Array<{
                   connector?: "AND" | "OR";
                   field: "key" | "count" | "lastRequest" | "_id";

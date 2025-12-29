@@ -11,6 +11,10 @@ type TrailerSectionProps = {
   clipId?: string;
   onPlay?: () => void;
   onShare?: () => void;
+  // Event tracking callbacks
+  onTrailerLoad?: (trailerId: string, trailerTitle: string) => void;
+  onTrailerPlay?: (trailerId: string, trailerTitle: string) => void;
+  onTrailerShare?: (trailerId: string, trailerTitle: string) => void;
 };
 
 function extractYouTubeId(url: string): string | null {
@@ -34,6 +38,9 @@ export const TrailerSection: FC<TrailerSectionProps> = ({
   clipId,
   onPlay,
   onShare,
+  onTrailerLoad,
+  onTrailerPlay,
+  onTrailerShare,
 }) => {
   const [copied, setCopied] = useState(false);
   const videoId = extractYouTubeId(youtubeUrl);
@@ -48,6 +55,9 @@ export const TrailerSection: FC<TrailerSectionProps> = ({
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
       onShare?.();
+      if (clipId) {
+        onTrailerShare?.(clipId, clipTitle);
+      }
     } catch {
       // Fallback for older browsers
       const input = document.createElement("input");
@@ -59,12 +69,19 @@ export const TrailerSection: FC<TrailerSectionProps> = ({
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
       onShare?.();
+      if (clipId) {
+        onTrailerShare?.(clipId, clipTitle);
+      }
     }
-  }, [shareUrl, onShare]);
+  }, [shareUrl, onShare, clipId, clipTitle, onTrailerShare]);
 
   const handleIframeLoad = useCallback(() => {
     onPlay?.();
-  }, [onPlay]);
+    if (clipId) {
+      onTrailerLoad?.(clipId, clipTitle);
+      onTrailerPlay?.(clipId, clipTitle);
+    }
+  }, [onPlay, clipId, clipTitle, onTrailerLoad, onTrailerPlay]);
 
   if (!videoId) {
     return (

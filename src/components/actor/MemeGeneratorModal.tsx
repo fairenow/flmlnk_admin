@@ -361,7 +361,8 @@ export function MemeGeneratorModal({
             </button>
           </div>
 
-          {/* Source Type Tabs - YouTube option temporarily disabled
+          {/* Source Type Tabs - YouTube URL commented out, not working yet */}
+          {/*
           <div className="flex gap-2 mb-4 p-1 rounded-xl bg-slate-100 dark:bg-white/5">
             <button
               type="button"
@@ -392,7 +393,7 @@ export function MemeGeneratorModal({
           </div>
           */}
 
-          {/* YouTube URL Input - temporarily disabled
+          {/* YouTube URL Input - commented out, not working yet
           {sourceType === "youtube" && (
             <div className="mb-4">
               <label className="block text-xs font-medium text-slate-700 dark:text-white/70 mb-1.5">
@@ -417,6 +418,7 @@ export function MemeGeneratorModal({
           */}
 
           {/* File Upload Input */}
+          {sourceType === "file" && (
           <div className="mb-4">
               <input
                 ref={fileInputRef}
@@ -563,6 +565,7 @@ export function MemeGeneratorModal({
                 </div>
               )}
           </div>
+          )}
 
           {/* Meme Count */}
           <div className="mb-4">

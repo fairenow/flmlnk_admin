@@ -1,6 +1,7 @@
 "use client";
 
 import type { FC } from "react";
+import type { Id } from "@convex/_generated/dataModel";
 import { NetflixProvider } from "./NetflixContext";
 import NetflixHero from "./NetflixHero";
 import { extractYouTubeId } from "@/utils/youtubeApi";
@@ -40,13 +41,21 @@ type CinematicHeroProps = {
   onShare?: () => void;
   isAuthenticated?: boolean;
   onShowEmailModal?: (show: boolean) => void;
-  actorProfileId?: string;
+  actorProfileId?: Id<"actor_profiles">;
+  // Event tracking callbacks
+  onWatchCtaClick?: (label: string, url: string) => void;
+  onGetUpdatesClick?: () => void;
+  onShareClick?: () => void;
+  onVideoPlay?: () => void;
+  onVideoPause?: () => void;
+  onMuteToggle?: (isMuted: boolean) => void;
+  onFullscreenEnter?: () => void;
 };
 
 export const CinematicHero: FC<CinematicHeroProps> = ({
   displayName,
   avatarUrl,
-  slug,
+  slug: _slug,
   theme: _theme,
   featuredProject,
   featuredClipUrl,
@@ -55,6 +64,14 @@ export const CinematicHero: FC<CinematicHeroProps> = ({
   isAuthenticated = false,
   onShowEmailModal = () => {},
   actorProfileId,
+  // Event tracking callbacks
+  onWatchCtaClick,
+  onGetUpdatesClick,
+  onShareClick,
+  onVideoPlay,
+  onVideoPause,
+  onMuteToggle,
+  onFullscreenEnter,
 }) => {
   // Extract video ID from YouTube URL
   const videoId = featuredClipUrl ? extractYouTubeId(featuredClipUrl) : null;
@@ -100,7 +117,13 @@ export const CinematicHero: FC<CinematicHeroProps> = ({
       watchCtaLabel={featuredProject?.primaryWatchLabel}
       watchCtaUrl={featuredProject?.primaryWatchUrl}
       actorProfileId={actorProfileId}
-      slug={slug}
+      onWatchCtaClick={onWatchCtaClick}
+      onGetUpdatesClick={onGetUpdatesClick}
+      onShareClick={onShareClick}
+      onVideoPlay={onVideoPlay}
+      onVideoPause={onVideoPause}
+      onMuteToggle={onMuteToggle}
+      onFullscreenEnter={onFullscreenEnter}
     >
       <NetflixHero />
     </NetflixProvider>

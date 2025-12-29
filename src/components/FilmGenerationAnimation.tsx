@@ -1,23 +1,43 @@
 'use client';
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Film, Clapperboard, Play, Sparkles } from 'lucide-react';
+import { Film, Clapperboard, Play, Sparkles, Loader2 } from 'lucide-react';
 
 interface FilmGenerationAnimationProps {
   onComplete: () => void;
+  slug?: string; // Optional slug (reserved for future use with scraping status)
 }
 
-const FilmGenerationAnimation: React.FC<FilmGenerationAnimationProps> = ({ onComplete }) => {
+const FilmGenerationAnimation: React.FC<FilmGenerationAnimationProps> = ({ onComplete, slug }) => {
   const [currentPhase, setCurrentPhase] = useState(0);
   const [progress, setProgress] = useState(0);
+  const [animationDone, setAnimationDone] = useState(false);
+  const [waitingForScraping, setWaitingForScraping] = useState(false);
 
+  // For now, don't query scraping status - the getScrapingStatus function may not be deployed yet
+  // The animation will complete after the phases finish, and scraping continues in background
+  // TODO: Re-enable scraping status polling once the Convex function is deployed
+  // const scrapingStatus = useQuery(api.filmmakers.getScrapingStatus, slug ? { slug } : "skip");
+
+  // Phases for the animation - longer durations to give scraping time to complete
   const phases = useMemo(() => [
-    { text: "Assembling your footage...", duration: 1000 },
-    { text: "Adding your details...", duration: 1000 },
-    { text: "Creating your cinematic experience...", duration: 1000 },
-    { text: "And... Action!", duration: 500 }
+    { text: "Assembling your footage...", duration: 3000 },
+    { text: "Importing your filmography...", duration: 5000 },
+    { text: "Creating your cinematic experience...", duration: 5000 },
+    { text: "Polishing the details...", duration: 5000 },
+    { text: "And... Action!", duration: 2000 } // Final phase
   ], []);
+
+  // Waiting phase messages (used when waiting for scraping)
+  const waitingMessages = useMemo(() => [
+    "Gathering your film details...",
+    "Extracting high-resolution images...",
+    "Processing your filmography...",
+    "Almost there...",
+  ], []);
+
+  const [waitingMessageIndex, setWaitingMessageIndex] = useState(0);
 
   // SSR-safe screen width
   const screenWidth = typeof window !== 'undefined' ? window.innerWidth : 1920;
@@ -31,13 +51,37 @@ const FilmGenerationAnimation: React.FC<FilmGenerationAnimationProps> = ({ onCom
     }));
   }, []);
 
+  // Memoized complete handler
+  const handleComplete = useCallback(() => {
+    onComplete();
+  }, [onComplete]);
+
+  // Scraping is considered complete immediately for now (no status polling)
+  // Once getScrapingStatus is deployed, this can check actual status
+  const isScrapingComplete = true;
+
+  // Rotate waiting messages
+  useEffect(() => {
+    if (!waitingForScraping) return;
+
+    const interval = setInterval(() => {
+      setWaitingMessageIndex(prev => (prev + 1) % waitingMessages.length);
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [waitingForScraping, waitingMessages.length]);
+
+  // Main animation effect
   useEffect(() => {
     let phaseTimeout: ReturnType<typeof setTimeout>;
     let progressInterval: ReturnType<typeof setInterval>;
 
     const startPhase = (phaseIndex: number) => {
-      if (phaseIndex >= phases.length) {
-        setTimeout(() => onComplete(), 500);
+      // If we've reached the waiting phase
+      if (phaseIndex >= phases.length - 1) {
+        setCurrentPhase(phaseIndex);
+        setAnimationDone(true);
+        setWaitingForScraping(true);
         return;
       }
 
@@ -66,14 +110,29 @@ const FilmGenerationAnimation: React.FC<FilmGenerationAnimationProps> = ({ onCom
 
     startPhase(0);
 
-    const fallbackTimeout = setTimeout(() => onComplete(), 5000);
+    // Maximum wait time of 90 seconds (for scraping timeout)
+    const maxTimeout = setTimeout(() => {
+      console.log('[Animation] Max timeout reached, completing anyway');
+      handleComplete();
+    }, 90000);
 
     return () => {
       clearTimeout(phaseTimeout);
       clearInterval(progressInterval);
-      clearTimeout(fallbackTimeout);
+      clearTimeout(maxTimeout);
     };
-  }, [onComplete, phases]);
+  }, [phases, handleComplete]);
+
+  // Complete when animation is done and scraping is complete
+  useEffect(() => {
+    if (animationDone && isScrapingComplete) {
+      // Small delay for smooth transition
+      const timeout = setTimeout(() => {
+        handleComplete();
+      }, 1000);
+      return () => clearTimeout(timeout);
+    }
+  }, [animationDone, isScrapingComplete, handleComplete]);
 
   return (
     <div className="fixed inset-0 bg-black z-50 flex items-center justify-center overflow-hidden">
@@ -165,7 +224,7 @@ const FilmGenerationAnimation: React.FC<FilmGenerationAnimationProps> = ({ onCom
           </div>
         )}
 
-        {/* Phase 3: Spotlight/Action */}
+        {/* Phase 3: Polishing */}
         {currentPhase === 3 && (
           <motion.div
             initial={{ opacity: 0, scale: 0 }}
@@ -197,30 +256,94 @@ const FilmGenerationAnimation: React.FC<FilmGenerationAnimationProps> = ({ onCom
           </motion.div>
         )}
 
+        {/* Phase 4: Waiting for scraping (Final phase) */}
+        {currentPhase === 4 && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="mb-8"
+          >
+            <div className="relative">
+              {waitingForScraping && !isScrapingComplete ? (
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                >
+                  <Loader2 size={80} className="mx-auto text-carpet-red-500" />
+                </motion.div>
+              ) : (
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: [0, 1.2, 1] }}
+                  transition={{ duration: 0.5 }}
+                >
+                  <Sparkles size={80} className="mx-auto text-green-400" />
+                </motion.div>
+              )}
+              <motion.div
+                animate={{
+                  scale: [1, 1.3, 1],
+                  opacity: [0.5, 0.2, 0.5]
+                }}
+                transition={{
+                  duration: 2,
+                  repeat: Infinity,
+                  ease: "easeInOut"
+                }}
+                className="absolute inset-0 bg-carpet-red-500 rounded-full blur-xl opacity-20"
+              />
+            </div>
+          </motion.div>
+        )}
+
         {/* Text */}
         <motion.h2
-          key={currentPhase}
+          key={waitingForScraping ? `waiting-${waitingMessageIndex}` : currentPhase}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -20 }}
           transition={{ duration: 0.5 }}
           className="text-2xl lg:text-3xl font-bold mb-8"
         >
-          {phases[currentPhase]?.text}
+          {waitingForScraping && !isScrapingComplete
+            ? waitingMessages[waitingMessageIndex]
+            : waitingForScraping && isScrapingComplete
+              ? "And... Action!"
+              : phases[currentPhase]?.text}
         </motion.h2>
 
         {/* Progress Bar */}
         <div className="max-w-md mx-auto">
-          <div className="w-full bg-gray-800 rounded-full h-2 mb-4">
-            <motion.div
-              className="bg-gradient-to-r from-carpet-red-500 to-pink-500 h-2 rounded-full"
-              initial={{ width: 0 }}
-              animate={{ width: `${progress}%` }}
-              transition={{ duration: 0.1 }}
-            />
+          <div className="w-full bg-gray-800 rounded-full h-2 mb-4 overflow-hidden">
+            {waitingForScraping && !isScrapingComplete ? (
+              // Indeterminate progress bar animation
+              <motion.div
+                className="bg-gradient-to-r from-carpet-red-500 via-pink-500 to-carpet-red-500 h-2"
+                style={{ width: '40%' }}
+                animate={{
+                  x: ['-100%', '250%'],
+                }}
+                transition={{
+                  duration: 1.5,
+                  repeat: Infinity,
+                  ease: "easeInOut"
+                }}
+              />
+            ) : (
+              <motion.div
+                className="bg-gradient-to-r from-carpet-red-500 to-pink-500 h-2 rounded-full"
+                initial={{ width: 0 }}
+                animate={{ width: waitingForScraping ? '100%' : `${progress}%` }}
+                transition={{ duration: 0.3 }}
+              />
+            )}
           </div>
           <p className="text-gray-400 text-sm">
-            {Math.round(progress)}% complete
+            {waitingForScraping && !isScrapingComplete
+              ? "Finalizing your profile..."
+              : waitingForScraping && isScrapingComplete
+                ? "Ready!"
+                : `${Math.round(progress)}% complete`}
           </p>
         </div>
 

@@ -3286,4 +3286,222 @@ export default defineSchema({
     .index("by_sessionId", ["sessionId"])
     .index("by_actorProfile", ["actorProfileId"])
     .index("by_status", ["status"]),
+
+  // ============================================
+  // ADMIN-ONLY TABLES
+  // These tables are for superadmin functionality only
+  // Queries/mutations should validate superadmin access
+  // ============================================
+
+  // Admin email campaigns - Platform-wide email campaigns to filmmakers
+  admin_email_campaigns: defineTable({
+    // Campaign identity
+    name: v.string(),
+    subject: v.string(),
+    preheaderText: v.optional(v.string()),
+    bodyHtml: v.string(),
+    bodyText: v.optional(v.string()),
+
+    // Audience targeting
+    audienceType: v.string(), // "all_filmmakers", "incomplete_onboarding", "fan_subscribers", "high_engagement", "no_trailers", "no_clips", "custom"
+    audienceFilters: v.optional(
+      v.object({
+        location: v.optional(v.string()),
+        hasTrailer: v.optional(v.boolean()),
+        minFilmCount: v.optional(v.number()),
+        engagementLevel: v.optional(v.string()), // "high", "medium", "low", "inactive"
+        signupDateAfter: v.optional(v.number()),
+        signupDateBefore: v.optional(v.number()),
+        hasClips: v.optional(v.boolean()),
+        hasMemes: v.optional(v.boolean()),
+      })
+    ),
+
+    // Campaign status
+    status: v.string(), // "draft", "scheduled", "sending", "sent", "cancelled", "failed"
+    scheduledFor: v.optional(v.number()),
+    sentAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+
+    // Sender info
+    fromName: v.string(),
+    replyTo: v.optional(v.string()),
+
+    // Metrics (updated during/after sending)
+    recipientCount: v.optional(v.number()),
+    sentCount: v.optional(v.number()),
+    deliveredCount: v.optional(v.number()),
+    openedCount: v.optional(v.number()),
+    clickedCount: v.optional(v.number()),
+    bouncedCount: v.optional(v.number()),
+    unsubscribedCount: v.optional(v.number()),
+    failedCount: v.optional(v.number()),
+
+    // Error tracking
+    errorMessage: v.optional(v.string()),
+
+    // Admin who created/sent
+    createdBy: v.id("users"),
+    sentBy: v.optional(v.id("users")),
+
+    // Timestamps
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_status", ["status"])
+    .index("by_createdBy", ["createdBy"])
+    .index("by_scheduledFor", ["scheduledFor"])
+    .index("by_audienceType", ["audienceType"]),
+
+  // Admin email sends - Individual send records for admin campaigns
+  admin_email_sends: defineTable({
+    campaignId: v.id("admin_email_campaigns"),
+
+    // Recipient info
+    recipientEmail: v.string(),
+    recipientName: v.optional(v.string()),
+    recipientType: v.string(), // "user", "fan_email", "auth_user"
+    recipientId: v.optional(v.string()), // userId, fan_email ID, or auth user ID
+
+    // Send status
+    status: v.string(), // "pending", "sent", "delivered", "opened", "clicked", "bounced", "failed"
+    resendEmailId: v.optional(v.string()), // Resend's email ID for tracking
+
+    // Engagement tracking
+    sentAt: v.optional(v.number()),
+    deliveredAt: v.optional(v.number()),
+    openedAt: v.optional(v.number()),
+    clickedAt: v.optional(v.number()),
+
+    // Click tracking
+    clickedLinks: v.optional(v.array(v.string())),
+
+    // Error tracking
+    errorMessage: v.optional(v.string()),
+    bounceType: v.optional(v.string()), // "hard", "soft"
+
+    // Unique tracking ID for open/click pixels
+    trackingId: v.string(),
+
+    // Timestamps
+    createdAt: v.number(),
+  })
+    .index("by_campaign", ["campaignId"])
+    .index("by_trackingId", ["trackingId"])
+    .index("by_email", ["recipientEmail"])
+    .index("by_campaign_status", ["campaignId", "status"]),
+
+  // Admin submission notifications - Notify admins of new user content
+  admin_submission_notifications: defineTable({
+    // What type of submission
+    type: v.string(), // "new_clip", "new_meme", "new_gif", "new_project", "new_profile"
+
+    // Who created it
+    actorProfileId: v.id("actor_profiles"),
+    userId: v.optional(v.id("users")),
+
+    // Asset reference
+    assetId: v.optional(v.string()),
+    assetType: v.optional(v.string()), // "clip", "meme", "gif", "project"
+    assetTitle: v.optional(v.string()),
+    assetThumbnailUrl: v.optional(v.string()),
+
+    // Asset quality scores (for prioritization)
+    viralScore: v.optional(v.number()),
+    qualityScore: v.optional(v.number()),
+
+    // Review status
+    reviewed: v.boolean(),
+    reviewedBy: v.optional(v.id("users")),
+    reviewedAt: v.optional(v.number()),
+
+    // Action taken
+    action: v.optional(v.string()), // "boosted", "featured", "ignored", "flagged"
+    actionNotes: v.optional(v.string()),
+
+    // Timestamps
+    createdAt: v.number(),
+  })
+    .index("by_reviewed", ["reviewed"])
+    .index("by_type", ["type"])
+    .index("by_actorProfile", ["actorProfileId"])
+    .index("by_createdAt", ["createdAt"])
+    .index("by_reviewed_createdAt", ["reviewed", "createdAt"]),
+
+  // Admin boost suggestions - AI-suggested assets for boosting
+  admin_boost_suggestions: defineTable({
+    // Asset reference
+    assetId: v.string(),
+    assetType: v.string(), // "clip", "meme", "gif"
+    actorProfileId: v.id("actor_profiles"),
+
+    // Asset metadata
+    assetTitle: v.optional(v.string()),
+    assetThumbnailUrl: v.optional(v.string()),
+
+    // AI analysis
+    score: v.number(), // Overall boost-worthiness score 0-100
+    viralPotential: v.optional(v.number()), // 0-100
+    engagementPrediction: v.optional(v.number()), // Predicted engagement rate
+    reason: v.string(), // Why this asset should be boosted
+
+    // Suggested boost configuration
+    suggestedBudgetCents: v.optional(v.number()),
+    suggestedDurationDays: v.optional(v.number()),
+    suggestedPlatforms: v.optional(v.array(v.string())),
+
+    // Review status
+    status: v.string(), // "pending", "approved", "rejected", "boosted", "expired"
+    reviewedBy: v.optional(v.id("users")),
+    reviewedAt: v.optional(v.number()),
+    rejectionReason: v.optional(v.string()),
+
+    // If boosted, reference to the campaign
+    boostCampaignId: v.optional(v.id("boost_campaigns")),
+
+    // Timestamps
+    createdAt: v.number(),
+    expiresAt: v.optional(v.number()), // Suggestions expire after X days
+  })
+    .index("by_status", ["status"])
+    .index("by_score", ["score"])
+    .index("by_actorProfile", ["actorProfileId"])
+    .index("by_assetId", ["assetType", "assetId"]),
+
+  // Admin audit log - Track all admin actions for compliance
+  admin_audit_log: defineTable({
+    // Who performed the action
+    adminUserId: v.id("users"),
+    adminEmail: v.optional(v.string()),
+
+    // What action was performed
+    action: v.string(), // "send_campaign", "gift_boost", "hide_asset", "feature_asset", "ban_user", etc.
+    actionCategory: v.string(), // "campaign", "boost", "asset", "user", "system"
+
+    // Target of the action
+    targetType: v.string(), // "campaign", "boost", "asset", "user", "profile"
+    targetId: v.string(),
+    targetName: v.optional(v.string()), // Human-readable name for logs
+
+    // Action details
+    details: v.optional(v.string()), // JSON string of action-specific details
+    previousValue: v.optional(v.string()), // Previous state (for updates)
+    newValue: v.optional(v.string()), // New state (for updates)
+
+    // Request context
+    ipAddress: v.optional(v.string()),
+    userAgent: v.optional(v.string()),
+
+    // Result
+    success: v.boolean(),
+    errorMessage: v.optional(v.string()),
+
+    // Timestamps
+    createdAt: v.number(),
+  })
+    .index("by_admin", ["adminUserId"])
+    .index("by_action", ["action"])
+    .index("by_actionCategory", ["actionCategory"])
+    .index("by_target", ["targetType", "targetId"])
+    .index("by_createdAt", ["createdAt"]),
 });

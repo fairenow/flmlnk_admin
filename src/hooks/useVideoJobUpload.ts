@@ -30,6 +30,10 @@ export interface UseVideoJobUploadReturn {
 const MAX_CONCURRENT = 3;
 const RETRIES = 3;
 
+// Convex HTTP endpoint for upload proxy (CORS fallback)
+const CONVEX_SITE_URL = process.env.NEXT_PUBLIC_CONVEX_URL?.replace(".cloud", ".site") || "";
+const UPLOAD_PROXY_URL = `${CONVEX_SITE_URL}/r2/upload-part`;
+
 export function useVideoJobUpload(jobId: Id<"video_jobs"> | null): UseVideoJobUploadReturn {
   const [state, setState] = useState<UseVideoJobUploadReturn["state"]>("idle");
   const [progress, setProgress] = useState(0);
@@ -60,11 +64,47 @@ export function useVideoJobUpload(jobId: Id<"video_jobs"> | null): UseVideoJobUp
     }
   }, [jobStatus, job?.error]);
 
+  /**
+   * Upload a single part via the Convex proxy (CORS fallback)
+   */
+  const uploadPartViaProxy = useCallback(
+    async (url: string, chunk: Blob, partNumber: number, signal: AbortSignal) => {
+      const response = await fetch(UPLOAD_PROXY_URL, {
+        method: "POST",
+        body: chunk,
+        signal,
+        headers: {
+          "X-Upload-Url": url,
+          "X-Part-Number": partNumber.toString(),
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Proxy upload failed: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data.etag || `"part-${partNumber}"`;
+    },
+    []
+  );
+
+  /**
+   * Upload a single part with retry logic
+   * First tries direct upload to R2, falls back to proxy if CORS fails
+   */
   const uploadPart = useCallback(
     async (url: string, chunk: Blob, partNumber: number, signal: AbortSignal) => {
       let lastError: Error | null = null;
+      let useProxy = false;
+
       for (let attempt = 0; attempt < RETRIES; attempt++) {
         try {
+          if (useProxy && UPLOAD_PROXY_URL) {
+            return await uploadPartViaProxy(url, chunk, partNumber, signal);
+          }
+
           const res = await fetch(url, { method: "PUT", body: chunk, signal });
           if (!res.ok) throw new Error(`Upload failed with status ${res.status}`);
           const etag = res.headers.get("ETag") || `"part-${partNumber}"`;
@@ -72,12 +112,24 @@ export function useVideoJobUpload(jobId: Id<"video_jobs"> | null): UseVideoJobUp
         } catch (err) {
           if (signal.aborted) throw err;
           lastError = err as Error;
+
+          // Check if this is a CORS error - switch to proxy
+          const isCorsOrNetworkError =
+            err instanceof TypeError ||
+            (err instanceof Error && err.message.includes("Failed to fetch"));
+
+          if (isCorsOrNetworkError && UPLOAD_PROXY_URL && !useProxy) {
+            console.warn(`Direct R2 upload failed (likely CORS), switching to proxy for part ${partNumber}`);
+            useProxy = true;
+            continue;
+          }
+
           await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
         }
       }
       throw lastError || new Error("Upload failed");
     },
-    []
+    [uploadPartViaProxy]
   );
 
   const ensurePartUrls = useCallback(

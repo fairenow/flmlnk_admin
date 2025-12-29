@@ -93,6 +93,8 @@ export interface UploadJobOptions {
   maxClipDuration?: number;
   aspectRatio?: string;
   clipTone?: string;
+  // Full video mode - skip clipping, just add captions/format
+  fullVideoMode?: boolean;
 }
 
 // Constants
@@ -100,6 +102,10 @@ const PART_SIZE = 10 * 1024 * 1024; // 10MB per part
 const MAX_CONCURRENT_UPLOADS = 3;
 const RETRY_COUNT = 3;
 const RETRY_DELAY_MS = 1000;
+
+// Convex HTTP endpoint for upload proxy (CORS fallback)
+const CONVEX_SITE_URL = process.env.NEXT_PUBLIC_CONVEX_URL?.replace(".cloud", ".site") || "";
+const UPLOAD_PROXY_URL = `${CONVEX_SITE_URL}/r2/upload-part`;
 
 /**
  * Hook for resumable multipart uploads to R2
@@ -165,7 +171,39 @@ export function useResumableUpload(
   }, [job?.status, job?._id, job?.error, job?.errorStage, state, options]);
 
   /**
+   * Upload a single part via the Convex proxy (CORS fallback)
+   */
+  const uploadPartViaProxy = useCallback(
+    async (
+      url: string,
+      partNumber: number,
+      chunk: Blob,
+      signal: AbortSignal
+    ): Promise<string> => {
+      const response = await fetch(UPLOAD_PROXY_URL, {
+        method: "POST",
+        body: chunk,
+        signal,
+        headers: {
+          "X-Upload-Url": url,
+          "X-Part-Number": partNumber.toString(),
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Proxy upload failed: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data.etag || `"part-${partNumber}"`;
+    },
+    []
+  );
+
+  /**
    * Upload a single part with retry logic
+   * First tries direct upload to R2, falls back to proxy if CORS fails
    */
   const uploadPart = useCallback(
     async (
@@ -175,9 +213,16 @@ export function useResumableUpload(
       signal: AbortSignal
     ): Promise<string> => {
       let lastError: Error | null = null;
+      let useProxy = false;
 
       for (let attempt = 0; attempt < RETRY_COUNT; attempt++) {
         try {
+          if (useProxy && UPLOAD_PROXY_URL) {
+            // Use proxy for this and all subsequent attempts
+            return await uploadPartViaProxy(url, partNumber, chunk, signal);
+          }
+
+          // Try direct upload to R2
           const response = await fetch(url, {
             method: "PUT",
             body: chunk,
@@ -194,6 +239,22 @@ export function useResumableUpload(
         } catch (err) {
           if (signal.aborted) throw err;
           lastError = err as Error;
+
+          // Check if this is a CORS error (TypeError with "Failed to fetch" message)
+          // or network error - switch to proxy for all future attempts
+          const isCorsOrNetworkError =
+            err instanceof TypeError ||
+            (err instanceof Error && err.message.includes("Failed to fetch"));
+
+          if (isCorsOrNetworkError && UPLOAD_PROXY_URL && !useProxy) {
+            console.warn(
+              `Direct R2 upload failed (likely CORS), switching to proxy for part ${partNumber}`
+            );
+            useProxy = true;
+            // Don't wait, immediately retry with proxy
+            continue;
+          }
+
           if (attempt < RETRY_COUNT - 1) {
             await new Promise((r) => setTimeout(r, RETRY_DELAY_MS * (attempt + 1)));
           }
@@ -202,7 +263,7 @@ export function useResumableUpload(
 
       throw lastError || new Error("Upload failed after retries");
     },
-    []
+    [uploadPartViaProxy]
   );
 
   /**
@@ -299,6 +360,7 @@ export function useResumableUpload(
           maxClipDuration: uploadOptions.maxClipDuration,
           aspectRatio: uploadOptions.aspectRatio,
           clipTone: uploadOptions.clipTone,
+          fullVideoMode: uploadOptions.fullVideoMode,
         });
         setJobId(newJobId);
         options.onJobCreated?.(newJobId);

@@ -1,8 +1,10 @@
+"use client";
+
 import type { FC, CSSProperties } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
-import { Id } from "@convex/_generated/dataModel";
-import { getSessionId, getUserAgent, getReferrer } from "@/lib/analytics";
+import type { Id } from "@convex/_generated/dataModel";
+import { getSessionData } from "@/lib/analytics";
 import { pushGTMEvent } from "@/lib/gtm";
 
 type Socials = {
@@ -18,7 +20,7 @@ type SocialBarProps = {
   socials: Socials;
   className?: string;
   iconSize?: "sm" | "md" | "lg";
-  actorProfileId?: string;
+  actorProfileId?: Id<"actor_profiles">;
 };
 
 const SOCIAL_CONFIG: Record<
@@ -52,22 +54,29 @@ export const SocialBar: FC<SocialBarProps> = ({
   ) as [keyof Socials, string][];
 
   const handleSocialClick = (platform: keyof Socials, url: string) => {
+    const config = SOCIAL_CONFIG[platform];
+
     // Track in GTM
     pushGTMEvent("social_link_clicked", {
-      platform,
-      url,
+      social_platform: platform,
+      social_label: config.label,
+      social_url: url,
     });
 
     // Track in Convex analytics
     if (actorProfileId) {
+      const sessionData = getSessionData();
       logEvent({
-        actorProfileId: actorProfileId as Id<"actor_profiles">,
+        actorProfileId,
         eventType: "social_link_clicked",
-        sessionId: getSessionId(),
-        userAgent: getUserAgent(),
-        referrer: getReferrer(),
-      }).catch((err) => {
-        console.error("Failed to log social link click:", err);
+        sessionId: sessionData.sessionId,
+        userAgent: sessionData.userAgent,
+        referrer: sessionData.referrer,
+        metadata: {
+          socialPlatform: platform,
+          ctaLabel: config.label,
+          ctaUrl: url,
+        },
       });
     }
   };
@@ -85,9 +94,9 @@ export const SocialBar: FC<SocialBarProps> = ({
             target="_blank"
             rel="noopener noreferrer"
             title={config.label}
+            onClick={() => handleSocialClick(key, url)}
             className={`flex items-center justify-center rounded-full bg-white/10 font-semibold text-white/80 transition-all hover:scale-110 hover:bg-white/20 hover:text-white ${SIZE_CLASSES[iconSize]}`}
             style={{ "--hover-color": config.hoverColor } as CSSProperties}
-            onClick={() => handleSocialClick(key, url)}
           >
             {config.icon}
           </a>

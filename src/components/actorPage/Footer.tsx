@@ -47,7 +47,7 @@ export const Footer: FC = () => {
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
           <a
-            href="https://film.flmlnk.com"
+            href="https://flmlnk.com"
             target="_blank"
             rel="noopener noreferrer"
             className="block hover:opacity-80 transition-opacity"
@@ -110,9 +110,8 @@ export const Footer: FC = () => {
         {/* Legal */}
         <div className="border-t border-gray-900 pt-8">
           <div className="flex flex-wrap justify-center items-center gap-4 text-sm">
-            <a href="#" className="hover:text-white transition-colors">Terms of Service</a>
-            <a href="#" className="hover:text-white transition-colors">Privacy Policy</a>
-            <a href="#" className="hover:text-white transition-colors">Cookie Settings</a>
+            <a href="/terms" className="hover:text-white transition-colors">Terms of Service</a>
+            <a href="/privacy" className="hover:text-white transition-colors">Privacy Policy</a>
             <span>© 2025 FLMLNK. All rights reserved.</span>
           </div>
         </div>

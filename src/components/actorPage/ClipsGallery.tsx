@@ -22,6 +22,14 @@ type ClipsGalleryProps = {
   featuredClipId?: Id<"clips">;
   primaryColor?: string;
   onClipShare?: (_clipId: Id<"clips">) => void;
+  // Event tracking callbacks
+  onClipView?: (clipId: string, clipTitle: string) => void;
+  onClipPlay?: (clipId: string, clipTitle: string) => void;
+  onFullscreenOpen?: (clipId: string, clipTitle: string) => void;
+  onFullscreenClose?: () => void;
+  onNavigateNext?: (clipId: string) => void;
+  onNavigatePrev?: (clipId: string) => void;
+  onContributionClick?: (clipId: string) => void;
 };
 
 declare global {
@@ -146,6 +154,13 @@ export const ClipsGallery: FC<ClipsGalleryProps> = ({
   featuredClipId,
   primaryColor = "#FF1744",
   onClipShare,
+  onClipView,
+  onClipPlay,
+  onFullscreenOpen,
+  onFullscreenClose,
+  onNavigateNext,
+  onNavigatePrev,
+  onContributionClick,
 }) => {
   const [copiedId, setCopiedId] = useState<Id<"clips"> | null>(null);
   const [fullscreenClipIndex, setFullscreenClipIndex] = useState<number | null>(null);
@@ -253,7 +268,10 @@ export const ClipsGallery: FC<ClipsGalleryProps> = ({
   const openFullscreen = useCallback((index: number) => {
     setFullscreenClipIndex(index);
     setIsPlaying(true);
-  }, []);
+    const clip = galleryClips[index];
+    onFullscreenOpen?.(clip._id, clip.title);
+    onClipPlay?.(clip._id, clip.title);
+  }, [galleryClips, onFullscreenOpen, onClipPlay]);
 
   const closeFullscreen = useCallback(() => {
     setFullscreenClipIndex(null);
@@ -262,19 +280,28 @@ export const ClipsGallery: FC<ClipsGalleryProps> = ({
       playerRef.current.destroy();
       playerRef.current = null;
     }
-  }, []);
+    onFullscreenClose?.();
+  }, [onFullscreenClose]);
 
   const goToNextClip = useCallback(() => {
     if (fullscreenClipIndex !== null && fullscreenClipIndex < galleryClips.length - 1) {
-      setFullscreenClipIndex(fullscreenClipIndex + 1);
+      const nextIndex = fullscreenClipIndex + 1;
+      setFullscreenClipIndex(nextIndex);
+      const nextClip = galleryClips[nextIndex];
+      onNavigateNext?.(nextClip._id);
+      onClipPlay?.(nextClip._id, nextClip.title);
     }
-  }, [fullscreenClipIndex, galleryClips.length]);
+  }, [fullscreenClipIndex, galleryClips, onNavigateNext, onClipPlay]);
 
   const goToPrevClip = useCallback(() => {
     if (fullscreenClipIndex !== null && fullscreenClipIndex > 0) {
-      setFullscreenClipIndex(fullscreenClipIndex - 1);
+      const prevIndex = fullscreenClipIndex - 1;
+      setFullscreenClipIndex(prevIndex);
+      const prevClip = galleryClips[prevIndex];
+      onNavigatePrev?.(prevClip._id);
+      onClipPlay?.(prevClip._id, prevClip.title);
     }
-  }, [fullscreenClipIndex]);
+  }, [fullscreenClipIndex, galleryClips, onNavigatePrev, onClipPlay]);
 
   // Touch handlers for swipe
   const handleTouchStart = useCallback((e: ReactTouchEvent) => {
@@ -382,7 +409,12 @@ export const ClipsGallery: FC<ClipsGalleryProps> = ({
             {/* Contribution Button */}
             <div className="relative">
               <button
-                onClick={() => setShowContribOptions(!showContribOptions)}
+                onClick={() => {
+                  setShowContribOptions(!showContribOptions);
+                  if (!showContribOptions && currentClip) {
+                    onContributionClick?.(currentClip._id);
+                  }
+                }}
                 className="p-3 rounded-full hover:bg-black/70 transition-colors"
                 style={{ backgroundColor: showContribOptions ? primaryColor : 'rgba(0,0,0,0.5)' }}
               >

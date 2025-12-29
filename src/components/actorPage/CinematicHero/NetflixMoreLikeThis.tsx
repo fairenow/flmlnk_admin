@@ -4,9 +4,8 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Play, Share2, Check, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useMutation } from 'convex/react';
 import { api } from '@convex/_generated/api';
-import { Id } from '@convex/_generated/dataModel';
 import { useNetflix } from './NetflixContext';
-import { getSessionId, getUserAgent, getReferrer } from '@/lib/analytics';
+import { getSessionData } from '@/lib/analytics';
 
 type Clip = {
   id: string;
@@ -104,14 +103,18 @@ const NetflixMoreLikeThis: React.FC = () => {
 
     // Track clip play in Convex analytics
     if (actorProfileId) {
+      const sessionData = getSessionData();
       logEvent({
-        actorProfileId: actorProfileId as Id<"actor_profiles">,
+        actorProfileId,
         eventType: 'clip_played',
-        sessionId: getSessionId(),
-        userAgent: getUserAgent(),
-        referrer: getReferrer(),
-      }).catch((err) => {
-        console.error('Failed to log clip play event:', err);
+        sessionId: sessionData.sessionId,
+        userAgent: sessionData.userAgent,
+        referrer: sessionData.referrer,
+        metadata: {
+          assetId: clipId,
+          assetType: 'clip',
+          assetTitle: clips.find(c => c.id === clipId)?.title,
+        },
       });
     }
   };
@@ -122,11 +125,7 @@ const NetflixMoreLikeThis: React.FC = () => {
 
     const shareUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}${window.location.pathname}#clip-${clip.id}`;
 
-    try {
-      await navigator.clipboard.writeText(shareUrl);
-      setCopiedId(clip.id);
-      setTimeout(() => setCopiedId(null), 2000);
-
+    const trackShare = () => {
       // Track share in GTM
       if (typeof window !== 'undefined') {
         window.dataLayer = window.dataLayer || [];
@@ -137,6 +136,30 @@ const NetflixMoreLikeThis: React.FC = () => {
           clip_title: clip.title,
         });
       }
+
+      // Track share in Convex analytics
+      if (actorProfileId) {
+        const sessionData = getSessionData();
+        logEvent({
+          actorProfileId,
+          eventType: 'clip_shared',
+          sessionId: sessionData.sessionId,
+          userAgent: sessionData.userAgent,
+          referrer: sessionData.referrer,
+          metadata: {
+            assetId: clip.id,
+            assetType: 'clip',
+            assetTitle: clip.title,
+          },
+        });
+      }
+    };
+
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopiedId(clip.id);
+      setTimeout(() => setCopiedId(null), 2000);
+      trackShare();
     } catch {
       // Fallback for older browsers
       const input = document.createElement('input');
@@ -147,6 +170,7 @@ const NetflixMoreLikeThis: React.FC = () => {
       document.body.removeChild(input);
       setCopiedId(clip.id);
       setTimeout(() => setCopiedId(null), 2000);
+      trackShare();
     }
   };
 

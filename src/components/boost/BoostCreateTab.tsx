@@ -33,10 +33,11 @@ interface BoostableAsset {
   viralScore?: number;
 }
 
-// Impression rate: $1 = 50-100 impressions (we use 75 as middle estimate)
-const IMPRESSIONS_PER_DOLLAR_MIN = 50;
-const IMPRESSIONS_PER_DOLLAR_MAX = 100;
-const IMPRESSIONS_PER_DOLLAR_AVG = 75;
+// Impression rate: $1 = 30-60 impressions (we use 45 as middle estimate)
+// Reduced by 40% from original estimates for more conservative projections
+const IMPRESSIONS_PER_DOLLAR_MIN = 30;
+const IMPRESSIONS_PER_DOLLAR_MAX = 60;
+const IMPRESSIONS_PER_DOLLAR_AVG = 45;
 
 const ASSET_TYPE_ICONS = {
   clip: PlayCircle,

@@ -81,6 +81,8 @@ type UnifiedGifJob = {
   createdAt: number;
   completedAt?: number;
   previewThumbnails: string[];
+  topAssetThumbnail?: string;
+  topAssetScore?: number;
   averageScore: number;
   gifs: GifWithSignedUrls[];
 };
@@ -237,6 +239,12 @@ export function GeneratedGifsManager({
 
       const publicCount = jobGifs.filter((g) => g.isPublic).length;
       const totalScore = jobGifs.reduce((sum, g) => sum + (g.viralScore ?? 0), 0);
+
+      // Find the highest rated GIF
+      const topGif = jobGifs.reduce((best, gif) =>
+        (gif.viralScore ?? 0) > (best?.viralScore ?? 0) ? gif : best,
+        jobGifs[0]
+      );
       const previewThumbs = jobGifs
         .slice(0, 4)
         .map((g) => g.signedGifUrl || g.signedMp4Url)
@@ -252,6 +260,8 @@ export function GeneratedGifsManager({
         createdAt: jobGroup.job.createdAt,
         completedAt: jobGroup.job.completedAt,
         previewThumbnails: previewThumbs,
+        topAssetThumbnail: topGif?.signedGifUrl || topGif?.signedMp4Url || undefined,
+        topAssetScore: topGif?.viralScore,
         averageScore: jobGifs.length > 0 ? totalScore / jobGifs.length : 0,
         gifs: jobGifs,
       });
@@ -537,6 +547,8 @@ export function GeneratedGifsManager({
                 createdAt: job.createdAt,
                 completedAt: job.completedAt,
                 previewThumbnails: job.previewThumbnails,
+                topAssetThumbnail: job.topAssetThumbnail,
+                topAssetScore: job.topAssetScore,
                 averageScore: job.averageScore,
               }}
               assetType="gifs"

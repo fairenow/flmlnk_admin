@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
+import { useEventTracking } from "@/hooks/useEventTracking";
 import {
   AlertCircle,
   BadgeCheck,
@@ -22,6 +23,7 @@ import {
   LogOut,
   Mail,
   Menu,
+  MessageSquare,
   MousePointerClick,
   PenSquare,
   PlayCircle,
@@ -31,6 +33,7 @@ import {
   Share2,
   Shield,
   Sparkles,
+  TrendingUp,
   User,
   Wand2,
   X,
@@ -56,10 +59,11 @@ import { CampaignDashboard } from "@/components/campaigns";
 import { SocialPostingDashboard } from "@/components/socialPosting";
 import { OverviewBento } from "@/components/overview";
 import { BoostModule } from "@/components/boost";
+import { DeepAnalytics } from "@/components/deepAnalytics";
 import type { AssetType } from "@/components/overview/types";
 
 // Module types for dynamic content rendering
-type DashboardModule = "overview" | "public-links" | "clips-generator" | "image-manager" | "account-settings" | "email-campaigns" | "social-posting" | "boost";
+type DashboardModule = "overview" | "deep-analytics" | "public-links" | "clips-generator" | "image-manager" | "account-settings" | "email-campaigns" | "social-posting" | "boost";
 
 type Submission = {
   id: string;
@@ -199,7 +203,7 @@ export default function UserDashboardPage() {
   const dashboardPath = `/dashboard/${urlSlug}`;
 
   const editorHref = urlSlug
-    ? `/onboarding/editor?slug=${encodeURIComponent(urlSlug)}`
+    ? `/f/${encodeURIComponent(urlSlug)}/editor`
     : "/onboarding";
   const data = useQuery(
     api.filmmakers.getOwnerEditablePage,
@@ -211,7 +215,7 @@ export default function UserDashboardPage() {
 
   const [draft, setDraft] = useState<ActorEditorDraft | null>(null);
   const [activeModule, setActiveModule] = useState<DashboardModule>("overview");
-  const [assetType, setAssetType] = useState<"clips" | "memes" | "gifs" | "trailers">("memes");
+  const [assetType, setAssetType] = useState<"clips" | "memes" | "gifs" | "trailers" | "manager">("clips");
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
   const [searchTerm, setSearchTerm] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -239,6 +243,38 @@ export default function UserDashboardPage() {
 
   // Get the actor profile ID for passing to child components
   const actorProfileId = data?.profile?._id as Id<"actor_profiles"> | undefined;
+
+  // Event tracking
+  const { trackDashboardEvent } = useEventTracking({
+    actorProfileId,
+    slug: urlSlug,
+    enableScrollTracking: false,
+    enableTimeTracking: true,
+  });
+
+  // Track dashboard page view on mount
+  useEffect(() => {
+    if (actorProfileId && urlSlug) {
+      trackDashboardEvent("page_view");
+    }
+  }, [actorProfileId, urlSlug, trackDashboardEvent]);
+
+  // Track module changes
+  const handleModuleChange = useCallback(
+    (module: DashboardModule) => {
+      trackDashboardEvent("module_clicked", module);
+      setActiveModule(module);
+      setIsSidebarOpen(false);
+    },
+    [trackDashboardEvent]
+  );
+
+  // Track module view when activeModule changes
+  useEffect(() => {
+    if (actorProfileId) {
+      trackDashboardEvent("module_view", activeModule);
+    }
+  }, [activeModule, actorProfileId, trackDashboardEvent]);
 
   // Redirect to sign in if not authenticated
   useEffect(() => {
@@ -466,6 +502,8 @@ export default function UserDashboardPage() {
         });
       }
 
+      // Track settings saved
+      trackDashboardEvent("settings_saved");
       setSettingsStatus("saved");
       setTimeout(() => setSettingsStatus("idle"), 2000);
     } catch (error) {
@@ -663,9 +701,9 @@ export default function UserDashboardPage() {
               <div className="space-y-2 mt-6">
                 {[
                   { label: "Overview", module: "overview" as DashboardModule, icon: LayoutDashboard },
-                  { label: "Boost", module: "boost" as DashboardModule, icon: Zap },
                   { label: "Asset Generator", module: "clips-generator" as DashboardModule, icon: Wand2 },
-                  { label: "Image Manager", module: "image-manager" as DashboardModule, icon: Images },
+                  { label: "Boost", module: "boost" as DashboardModule, icon: Zap },
+                  { label: "Deep Analytics", module: "deep-analytics" as DashboardModule, icon: TrendingUp },
                   { label: "Email Campaigns", module: "email-campaigns" as DashboardModule, icon: Mail },
                   { label: "Social Posting", module: "social-posting" as DashboardModule, icon: Share2 },
                   { label: "Public Links", module: "public-links" as DashboardModule, icon: LinkIcon },
@@ -674,10 +712,7 @@ export default function UserDashboardPage() {
                   <button
                     key={item.label}
                     type="button"
-                    onClick={() => {
-                      setActiveModule(item.module);
-                      setIsSidebarOpen(false);
-                    }}
+                    onClick={() => handleModuleChange(item.module)}
                     className={`flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-sm font-medium transition ${
                       activeModule === item.module
                         ? "border-red-500 bg-red-100 text-red-700 dark:bg-red-600/30 dark:text-white"
@@ -700,15 +735,26 @@ export default function UserDashboardPage() {
                     href={publicUrl}
                     target="_blank"
                     rel="noopener noreferrer"
+                    onClick={() => trackDashboardEvent("public_page_clicked")}
                     className="inline-flex items-center justify-center gap-2 rounded-full bg-red-600 px-3 py-2 font-medium text-white shadow-md shadow-red-950/30 transition hover:bg-red-500"
                   >
                     <ExternalLink className="h-4 w-4" /> View public page
                   </Link>
                   <Link
                     href={editorHref}
+                    onClick={() => trackDashboardEvent("edit_clicked")}
                     className="inline-flex items-center justify-center gap-2 rounded-full border border-red-300 bg-white px-3 py-2 font-medium text-red-700 transition hover:border-red-400 hover:bg-red-50 dark:border-red-800 dark:bg-red-900/40 dark:text-red-100 dark:hover:border-red-700 dark:hover:bg-red-800/50"
                   >
                     <PenSquare className="h-4 w-4" /> Open builder
+                  </Link>
+                  <Link
+                    href="https://www.flmlnk.com/f/flmlnk?tab=contact"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => trackDashboardEvent("feedback_clicked")}
+                    className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-2 font-medium text-slate-900 transition hover:border-slate-400 hover:bg-slate-50 dark:border-amber-500/50 dark:bg-amber-400 dark:text-slate-900 dark:hover:border-amber-400 dark:hover:bg-amber-300"
+                  >
+                    <MessageSquare className="h-4 w-4" /> Leave Feedback
                   </Link>
                 </div>
               </div>
@@ -717,7 +763,10 @@ export default function UserDashboardPage() {
               <div className="mt-auto pt-6">
                 <button
                   type="button"
-                  onClick={handleLogout}
+                  onClick={() => {
+                    trackDashboardEvent("logout_clicked");
+                    handleLogout();
+                  }}
                   className="flex w-full items-center justify-center gap-2 rounded-2xl border border-red-300 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 transition hover:border-red-400 hover:bg-red-100 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-100 dark:hover:border-red-700/60 dark:hover:bg-red-900/30"
                 >
                   <LogOut className="h-4 w-4" />
@@ -737,6 +786,14 @@ export default function UserDashboardPage() {
                 onNavigateToGenerator={(_type: AssetType) => {
                   setActiveModule("clips-generator");
                 }}
+              />
+            )}
+
+            {/* ============ DEEP ANALYTICS MODULE ============ */}
+            {activeModule === "deep-analytics" && actorProfileId && (
+              <DeepAnalytics
+                actorProfileId={actorProfileId}
+                slug={urlSlug}
               />
             )}
 
@@ -942,22 +999,8 @@ export default function UserDashboardPage() {
                 <div className="flex items-center gap-2 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/50 w-fit">
                   <button
                     type="button"
-                    onClick={() => setAssetType("memes")}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                      assetType === "memes"
-                        ? "bg-white dark:bg-slate-700 text-red-600 dark:text-red-400 shadow-sm"
-                        : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
-                    }`}
-                  >
-                    <span className="flex items-center gap-2">
-                      <Sparkles className="w-4 h-4" />
-                      Memes
-                    </span>
-                  </button>
-                  <button
-                    type="button"
                     onClick={() => setAssetType("clips")}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                       assetType === "clips"
                         ? "bg-white dark:bg-slate-700 text-red-600 dark:text-red-400 shadow-sm"
                         : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
@@ -965,13 +1008,27 @@ export default function UserDashboardPage() {
                   >
                     <span className="flex items-center gap-2">
                       <PlayCircle className="w-4 h-4" />
-                      Clips
+                      <span className={assetType === "clips" ? "" : "hidden sm:inline"}>Clips</span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAssetType("memes")}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                      assetType === "memes"
+                        ? "bg-white dark:bg-slate-700 text-red-600 dark:text-red-400 shadow-sm"
+                        : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4" />
+                      <span className={assetType === "memes" ? "" : "hidden sm:inline"}>Memes</span>
                     </span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setAssetType("gifs")}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                       assetType === "gifs"
                         ? "bg-white dark:bg-slate-700 text-red-600 dark:text-red-400 shadow-sm"
                         : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
@@ -982,9 +1039,24 @@ export default function UserDashboardPage() {
                         <rect x="3" y="3" width="18" height="18" rx="2" />
                         <path d="M8 12h4M8 16h2M16 8v8" />
                       </svg>
-                      GIFs
+                      <span className={assetType === "gifs" ? "" : "hidden sm:inline"}>GIFs</span>
                     </span>
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setAssetType("manager")}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                      assetType === "manager"
+                        ? "bg-white dark:bg-slate-700 text-red-600 dark:text-red-400 shadow-sm"
+                        : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <Images className="w-4 h-4" />
+                      <span className={assetType === "manager" ? "" : "hidden sm:inline"}>Manager</span>
+                    </span>
+                  </button>
+                  {/* Trailers tab commented out - not working yet
                   <button
                     type="button"
                     onClick={() => setAssetType("trailers")}
@@ -1002,6 +1074,7 @@ export default function UserDashboardPage() {
                       Trailers
                     </span>
                   </button>
+                  */}
                 </div>
 
                 {/* Clips Manager */}
@@ -1031,7 +1104,16 @@ export default function UserDashboardPage() {
                   </div>
                 )}
 
-                {/* Trailers Manager */}
+                {/* Image Manager */}
+                {assetType === "manager" && (
+                  <div className="rounded-3xl border border-red-300 bg-white p-6 shadow-lg shadow-red-200/50 dark:border-red-900/50 dark:bg-[#0f1219] dark:shadow-red-950/30">
+                    {urlSlug && (
+                      <ImageManager slug={urlSlug} />
+                    )}
+                  </div>
+                )}
+
+                {/* Trailers Manager - commented out, not working yet
                 {assetType === "trailers" && (
                   <div className="rounded-3xl border border-indigo-300 bg-white p-6 shadow-lg shadow-indigo-200/50 dark:border-indigo-900/50 dark:bg-[#0f1219] dark:shadow-indigo-950/30">
                     {urlSlug && (
@@ -1039,34 +1121,7 @@ export default function UserDashboardPage() {
                     )}
                   </div>
                 )}
-              </div>
-            )}
-
-            {/* ============ IMAGE MANAGER MODULE ============ */}
-            {activeModule === "image-manager" && (
-              <div className="space-y-6">
-                {/* Header */}
-                <div className="overflow-hidden rounded-3xl bg-gradient-to-r from-carpet-red-800 via-carpet-red-600 to-red-500 p-6 text-white shadow-lg shadow-red-950/40 ring-1 ring-red-300/30">
-                  <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.25em] text-red-100">Image Manager</p>
-                      <h2 className="text-2xl font-semibold tracking-tight">Organize your film project assets</h2>
-                      <p className="mt-1 text-sm text-red-100/90">
-                        Create projects, capture frames from videos, and manage your social media and ad assets.
-                      </p>
-                    </div>
-                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/20">
-                      <Images className="h-7 w-7" />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Image Manager Component */}
-                <div className="rounded-3xl border border-red-300 bg-white p-6 shadow-lg shadow-red-200/50 dark:border-red-900/50 dark:bg-[#0f1219] dark:shadow-red-950/30">
-                  {urlSlug && (
-                    <ImageManager slug={urlSlug} />
-                  )}
-                </div>
+                */}
               </div>
             )}
 

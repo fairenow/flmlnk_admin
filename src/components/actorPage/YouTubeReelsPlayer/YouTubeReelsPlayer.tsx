@@ -88,6 +88,16 @@ export const YouTubeReelsPlayer: FC<YouTubeReelsPlayerProps> = ({
   featuredClipId,
   primaryColor = "#FF1744",
   onClipShare,
+  onClipView,
+  onClipPlay,
+  onFullscreenOpen,
+  onFullscreenClose,
+  onNavigateNext,
+  onNavigatePrev,
+  onContributionClick,
+  onVideoPlay,
+  onVideoPause,
+  onMuteToggle,
 }) => {
   // Filter out the featured clip if shown separately
   const galleryClips = featuredClipId
@@ -268,6 +278,10 @@ export const YouTubeReelsPlayer: FC<YouTubeReelsPlayerProps> = ({
     const newUrl = `/f/${slug}?${newParams.toString()}`;
     window.history.pushState(null, "", newUrl);
 
+    // Track clip events
+    onFullscreenOpen?.(clip._id, clip.title);
+    onClipPlay?.(clip._id, clip.title);
+
     // Emit event
     videoPlayerEvents.emit("tiktok-player-opened");
 
@@ -277,7 +291,7 @@ export const YouTubeReelsPlayer: FC<YouTubeReelsPlayerProps> = ({
         setIsYouTubeReady(true);
       });
     }
-  }, [galleryClips, slug, getClipIdentifier, isYouTubeReady]);
+  }, [galleryClips, slug, getClipIdentifier, isYouTubeReady, onFullscreenOpen, onClipPlay]);
 
   // Close player
   const closePlayer = useCallback(() => {
@@ -293,6 +307,9 @@ export const YouTubeReelsPlayer: FC<YouTubeReelsPlayerProps> = ({
       : `/f/${slug}`;
     window.history.replaceState(null, "", newUrl);
 
+    // Track fullscreen close
+    onFullscreenClose?.();
+
     // Destroy player
     if (playerRef.current) {
       try {
@@ -306,7 +323,7 @@ export const YouTubeReelsPlayer: FC<YouTubeReelsPlayerProps> = ({
 
     // Emit event
     videoPlayerEvents.emit("tiktok-player-closed");
-  }, [slug]);
+  }, [slug, onFullscreenClose]);
 
   // Toggle play/pause
   const togglePlayPause = useCallback(() => {
@@ -314,10 +331,12 @@ export const YouTubeReelsPlayer: FC<YouTubeReelsPlayerProps> = ({
 
     if (isVideoPaused) {
       playerRef.current.playVideo();
+      onVideoPlay?.();
     } else {
       playerRef.current.pauseVideo();
+      onVideoPause?.();
     }
-  }, [isVideoPaused]);
+  }, [isVideoPaused, onVideoPlay, onVideoPause]);
 
   // Toggle mute
   const toggleMute = useCallback(() => {
@@ -328,8 +347,10 @@ export const YouTubeReelsPlayer: FC<YouTubeReelsPlayerProps> = ({
         playerRef.current.mute();
       }
     }
-    setIsMuted(!isMuted);
-  }, [isMuted]);
+    const newMutedState = !isMuted;
+    setIsMuted(newMutedState);
+    onMuteToggle?.(newMutedState);
+  }, [isMuted, onMuteToggle]);
 
   // Navigate to next/previous video
   const navigateToVideo = useCallback((direction: "next" | "previous") => {
@@ -352,6 +373,14 @@ export const YouTubeReelsPlayer: FC<YouTubeReelsPlayerProps> = ({
     const newUrl = `/f/${slug}?${newParams.toString()}`;
     window.history.replaceState(null, "", newUrl);
 
+    // Track navigation and play events
+    if (direction === "next") {
+      onNavigateNext?.(clip._id, clip.title);
+    } else {
+      onNavigatePrev?.(clip._id, clip.title);
+    }
+    onClipPlay?.(clip._id, clip.title);
+
     // Load new video
     const videoId = extractYouTubeId(clip.youtubeUrl);
     if (videoId && playerRef.current && isPlayerReadyRef.current) {
@@ -362,7 +391,7 @@ export const YouTubeReelsPlayer: FC<YouTubeReelsPlayerProps> = ({
     setTimeout(() => {
       isTransitioningRef.current = false;
     }, 300);
-  }, [currentClipIndex, galleryClips, slug, getClipIdentifier]);
+  }, [currentClipIndex, galleryClips, slug, getClipIdentifier, onNavigateNext, onNavigatePrev, onClipPlay]);
 
   // Initialize viewport and mount
   useEffect(() => {
@@ -543,8 +572,11 @@ export const YouTubeReelsPlayer: FC<YouTubeReelsPlayerProps> = ({
   // Contribution handler
   const handleContribution = useCallback(() => {
     const stripeUrl = currentClip?.stripePaymentUrl || DEFAULT_STRIPE_URL;
+    if (currentClip) {
+      onContributionClick?.(currentClip._id);
+    }
     window.open(stripeUrl, "_blank", "noopener,noreferrer");
-  }, [currentClip]);
+  }, [currentClip, onContributionClick]);
 
   if (galleryClips.length === 0) return null;
 

@@ -728,7 +728,7 @@ export const TrailerGeneratorModal: FC<TrailerGeneratorModalProps> = ({
                 </div>
                 {totalParts > 0 && (
                   <p className="text-xs text-slate-400 text-center">
-                    Part {currentPart} of {totalParts}
+                    {uploadProgress.toFixed(1)}% complete
                   </p>
                 )}
               </div>

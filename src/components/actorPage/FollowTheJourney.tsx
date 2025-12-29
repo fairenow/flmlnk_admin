@@ -3,8 +3,8 @@
 import type { FC, ReactNode } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
-import { Id } from "@convex/_generated/dataModel";
-import { getSessionId, getUserAgent, getReferrer } from "@/lib/analytics";
+import type { Id } from "@convex/_generated/dataModel";
+import { getSessionData } from "@/lib/analytics";
 import { pushGTMEvent } from "@/lib/gtm";
 
 type Socials = {
@@ -20,7 +20,7 @@ type FollowTheJourneyProps = {
   socials: Socials;
   primaryColor?: string;
   onEmailSignup?: () => void;
-  actorProfileId?: string;
+  actorProfileId?: Id<"actor_profiles">;
 };
 
 const SOCIAL_ICONS: Record<string, { icon: ReactNode; label: string; color: string }> = {
@@ -102,23 +102,28 @@ export const FollowTheJourney: FC<FollowTheJourneyProps> = ({
     }))
     .filter((s) => s.icon);
 
-  const handleSocialClick = (platform: string, url: string) => {
+  const handleSocialClick = (platform: string, label: string, url: string) => {
     // Track in GTM
     pushGTMEvent("social_link_clicked", {
-      platform,
-      url,
+      social_platform: platform,
+      social_label: label,
+      social_url: url,
     });
 
     // Track in Convex analytics
     if (actorProfileId) {
+      const sessionData = getSessionData();
       logEvent({
-        actorProfileId: actorProfileId as Id<"actor_profiles">,
+        actorProfileId,
         eventType: "social_link_clicked",
-        sessionId: getSessionId(),
-        userAgent: getUserAgent(),
-        referrer: getReferrer(),
-      }).catch((err) => {
-        console.error("Failed to log social link click:", err);
+        sessionId: sessionData.sessionId,
+        userAgent: sessionData.userAgent,
+        referrer: sessionData.referrer,
+        metadata: {
+          socialPlatform: platform,
+          ctaLabel: label,
+          ctaUrl: url,
+        },
       });
     }
   };
@@ -140,8 +145,8 @@ export const FollowTheJourney: FC<FollowTheJourneyProps> = ({
             href={social.url}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={() => handleSocialClick(social.key, social.label, social.url)}
             className="group flex items-center gap-3 rounded-lg border border-white/10 bg-white/5 p-3 transition hover:border-white/20 hover:bg-white/10"
-            onClick={() => handleSocialClick(social.key, social.url)}
           >
             <span
               className="text-slate-400 transition group-hover:text-white"

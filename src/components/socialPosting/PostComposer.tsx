@@ -731,7 +731,7 @@ export function PostComposer({ actorProfileId, postId, onBack }: PostComposerPro
               type="url"
               value={link}
               onChange={(e) => setLink(e.target.value)}
-              placeholder="https://film.flmlnk.com/f/your-film"
+              placeholder="https://flmlnk.com/f/your-film"
               className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
             />
           </div>

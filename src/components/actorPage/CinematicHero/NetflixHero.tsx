@@ -80,7 +80,15 @@ const NetflixHero: FC = () => {
     watchProgress: _watchProgress,
     updateWatchProgress,
     setShowEmailModal,
-    isAuthenticated
+    isAuthenticated,
+    // Event tracking callbacks
+    onWatchCtaClick,
+    onGetUpdatesClick,
+    onShareClick,
+    onVideoPlay,
+    onVideoPause,
+    onMuteToggle,
+    onFullscreenEnter,
   } = useNetflix();
 
   // Get video info (provider and ID) - videoId in context can be ID or full URL
@@ -156,8 +164,12 @@ const NetflixHero: FC = () => {
 
   const handleWatchFullMovie = () => {
     if (isAuthenticated) {
+      // Track CTA click before opening URL
+      onWatchCtaClick?.(ctaLabel, ctaUrl);
       window.open(ctaUrl, "_blank", "noopener,noreferrer");
     } else {
+      // Track get updates click when showing email modal
+      onGetUpdatesClick?.();
       setShowEmailModal(true);
     }
   };
@@ -193,6 +205,18 @@ const NetflixHero: FC = () => {
       window.removeEventListener("resize", handleOrientationChange);
     };
   }, []);
+
+  // Auto-enter/exit fullscreen based on landscape orientation on mobile
+  useEffect(() => {
+    if (isLandscape && !isFullscreenVideo) {
+      // Entering landscape mode - auto-enter fullscreen
+      onFullscreenEnter?.();
+      setIsFullscreenVideo(true);
+    } else if (!isLandscape && isFullscreenVideo) {
+      // Exiting landscape mode - auto-exit fullscreen
+      setIsFullscreenVideo(false);
+    }
+  }, [isLandscape, isFullscreenVideo, onFullscreenEnter]);
 
   // Initialize video player (YouTube or Vimeo)
   useEffect(() => {
@@ -442,6 +466,11 @@ const NetflixHero: FC = () => {
   // Create and manage fullscreen player
   useEffect(() => {
     if (isFullscreenVideo && fullscreenPlayerRef.current && !fullscreenPlayer && videoId) {
+      // Pause the main player to prevent audio overlap
+      if (player) {
+        player.pause();
+      }
+
       // Get current time from main player
       const currentTime = player?.getCurrentTime() || 0;
 
@@ -519,9 +548,23 @@ const NetflixHero: FC = () => {
         });
       }
     } else if (!isFullscreenVideo && fullscreenPlayer) {
+      // Sync playback position from fullscreen player back to main player
+      const fullscreenTime = fullscreenPlayer.getCurrentTime() || 0;
+
       // Cleanup fullscreen player
       fullscreenPlayer.destroy();
       setFullscreenPlayer(null);
+
+      // Resume main player from where fullscreen left off
+      if (player) {
+        // For YouTube, seekTo is available on the underlying player
+        if (player.provider === 'youtube' && player._player?.seekTo) {
+          player._player.seekTo(fullscreenTime, true);
+        } else if (player.provider === 'vimeo' && player._player?.setCurrentTime) {
+          player._player.setCurrentTime(fullscreenTime);
+        }
+        player.play();
+      }
     }
   }, [isFullscreenVideo, videoId, videoProvider, vimeoHash, isMuted, player, fullscreenPlayer, createYouTubeUnifiedPlayer, createVimeoUnifiedPlayer]);
 
@@ -542,7 +585,10 @@ const NetflixHero: FC = () => {
       } else {
         activePlayer.mute();
       }
-      setIsMuted(!isMuted);
+      const newMutedState = !isMuted;
+      setIsMuted(newMutedState);
+      // Track mute toggle
+      onMuteToggle?.(newMutedState);
     }
   };
 
@@ -550,11 +596,16 @@ const NetflixHero: FC = () => {
     if (player) {
       if (isPlaying) {
         player.pause();
+        // Track video pause
+        onVideoPause?.();
       } else {
         player.play();
+        // Track video play
+        onVideoPlay?.();
         if (isMuted) {
           player.unmute();
           setIsMuted(false);
+          onMuteToggle?.(false);
         }
       }
     }
@@ -599,6 +650,8 @@ const NetflixHero: FC = () => {
   }, []);
 
   const handleShare = () => {
+    // Track share click
+    onShareClick?.();
     if (navigator.share) {
       navigator.share({
         title: data.hero.title,
@@ -721,19 +774,6 @@ const NetflixHero: FC = () => {
       >
         {/* Video Player */}
         <div ref={mobileVideoRef} id="player-mobile" className="absolute inset-0 bg-gray-900" />
-
-        {/* Fullscreen Button - Shows in landscape when playing */}
-        {isLandscape && isPlaying && (
-          <button
-            onClick={() => setIsFullscreenVideo(true)}
-            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[30] bg-black/80 backdrop-blur-sm text-white px-8 py-4 rounded-full font-semibold flex items-center gap-3 hover:bg-black/90 transition-all transform hover:scale-105 shadow-2xl border border-white/30"
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-            </svg>
-            <span>Watch in Fullscreen</span>
-          </button>
-        )}
 
         {/* Click overlay for mobile */}
         <div

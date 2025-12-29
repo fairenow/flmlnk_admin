@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useCallback, type ReactNode, type FC } from "react";
+import type { Id } from "@convex/_generated/dataModel";
 
 export type HeroData = {
   videoId: string;
@@ -61,8 +62,15 @@ type NetflixContextValue = {
   isAuthenticated: boolean;
   userName: string;
   userEmail: string;
-  actorProfileId?: string;
-  slug?: string;
+  actorProfileId?: Id<"actor_profiles">;
+  // Event tracking callbacks
+  onWatchCtaClick?: (label: string, url: string) => void;
+  onGetUpdatesClick?: () => void;
+  onShareClick?: () => void;
+  onVideoPlay?: () => void;
+  onVideoPause?: () => void;
+  onMuteToggle?: (isMuted: boolean) => void;
+  onFullscreenEnter?: () => void;
 };
 
 const NetflixContext = createContext<NetflixContextValue | null>(null);
@@ -97,8 +105,15 @@ type NetflixProviderProps = {
   onShowEmailModal: (show: boolean) => void;
   watchCtaLabel?: string;
   watchCtaUrl?: string;
-  actorProfileId?: string;
-  slug?: string;
+  actorProfileId?: Id<"actor_profiles">;
+  // Event tracking callbacks
+  onWatchCtaClick?: (label: string, url: string) => void;
+  onGetUpdatesClick?: () => void;
+  onShareClick?: () => void;
+  onVideoPlay?: () => void;
+  onVideoPause?: () => void;
+  onMuteToggle?: (isMuted: boolean) => void;
+  onFullscreenEnter?: () => void;
 };
 
 export const NetflixProvider: FC<NetflixProviderProps> = ({
@@ -124,7 +139,14 @@ export const NetflixProvider: FC<NetflixProviderProps> = ({
   watchCtaLabel,
   watchCtaUrl,
   actorProfileId,
-  slug,
+  // Event tracking callbacks
+  onWatchCtaClick,
+  onGetUpdatesClick,
+  onShareClick,
+  onVideoPlay,
+  onVideoPause,
+  onMuteToggle,
+  onFullscreenEnter,
 }) => {
   const [data, setData] = useState<NetflixData>({
     hero: {
@@ -188,7 +210,14 @@ export const NetflixProvider: FC<NetflixProviderProps> = ({
     userName,
     userEmail,
     actorProfileId,
-    slug,
+    // Event tracking callbacks
+    onWatchCtaClick,
+    onGetUpdatesClick,
+    onShareClick,
+    onVideoPlay,
+    onVideoPause,
+    onMuteToggle,
+    onFullscreenEnter,
   };
 
   return (

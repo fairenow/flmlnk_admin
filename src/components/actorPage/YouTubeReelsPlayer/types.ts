@@ -18,6 +18,17 @@ export type YouTubeReelsPlayerProps = {
   featuredClipId?: Id<"clips">;
   primaryColor?: string;
   onClipShare?: (clipId: Id<"clips">) => void;
+  // Event tracking callbacks
+  onClipView?: (clipId: string, clipTitle: string) => void;
+  onClipPlay?: (clipId: string, clipTitle: string) => void;
+  onFullscreenOpen?: (clipId: string, clipTitle: string) => void;
+  onFullscreenClose?: () => void;
+  onNavigateNext?: (clipId: string, clipTitle: string) => void;
+  onNavigatePrev?: (clipId: string, clipTitle: string) => void;
+  onContributionClick?: (clipId: string) => void;
+  onVideoPlay?: () => void;
+  onVideoPause?: () => void;
+  onMuteToggle?: (isMuted: boolean) => void;
 };
 
 // YouTube Player types

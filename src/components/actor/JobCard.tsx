@@ -29,10 +29,19 @@ export type JobCardData = {
   createdAt: number;
   completedAt?: number;
   thumbnailUrl?: string;
-  // Preview thumbnails for the job (up to 4)
+  // Preview thumbnails for the job (up to 4) - legacy support
   previewThumbnails?: string[];
+  // Top rated asset thumbnail - shown prominently
+  topAssetThumbnail?: string;
+  // Score of the top rated asset
+  topAssetScore?: number;
   // Average score across all assets
   averageScore?: number;
+  // Progress tracking for in-progress jobs
+  progress?: number; // 0-100
+  currentStep?: string;
+  // Flag to indicate this is a processing job (not yet complete)
+  isProcessing?: boolean;
 };
 
 type JobCardProps = {
@@ -109,6 +118,15 @@ function getScoreColor(score: number): string {
   return "text-red-400";
 }
 
+// Sanitize step text to remove third-party branding (e.g., "Klap")
+function sanitizeStepText(text: string | undefined): string {
+  if (!text) return "Processing...";
+  // Replace "Klap" references with generic "AI" terminology
+  return text
+    .replace(/Klap is generating clips/gi, "AI is generating clips")
+    .replace(/Klap/gi, "AI");
+}
+
 export function JobCard({
   job,
   assetType,
@@ -129,35 +147,41 @@ export function JobCard({
       }`}
       onClick={onClick}
     >
-      {/* Thumbnail Preview Area */}
+      {/* Thumbnail Preview Area - Shows top rated asset or processing state */}
       <div className="relative aspect-video bg-slate-100 dark:bg-slate-800 overflow-hidden">
-        {job.previewThumbnails && job.previewThumbnails.length > 0 ? (
-          <div className="absolute inset-0 grid grid-cols-2 grid-rows-2 gap-0.5">
-            {job.previewThumbnails.slice(0, 4).map((thumb, idx) => (
-              <div
-                key={idx}
-                className="relative overflow-hidden bg-slate-200 dark:bg-slate-700"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={thumb}
-                  alt=""
-                  className="w-full h-full object-cover"
-                />
+        {job.isProcessing ? (
+          // Processing state - show animated gradient background
+          <div className="absolute inset-0 bg-gradient-to-br from-slate-800 via-slate-700 to-slate-800">
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent animate-shimmer" />
+            <div className="absolute inset-0 flex flex-col items-center justify-center p-4">
+              <div className="relative mb-3">
+                <Loader2 className="w-10 h-10 text-red-500 animate-spin" />
               </div>
-            ))}
-            {/* Fill empty slots if less than 4 */}
-            {Array.from({ length: Math.max(0, 4 - (job.previewThumbnails?.length || 0)) }).map(
-              (_, idx) => (
-                <div
-                  key={`empty-${idx}`}
-                  className="relative overflow-hidden bg-slate-200 dark:bg-slate-700 flex items-center justify-center"
-                >
-                  <AssetIcon className="w-6 h-6 text-slate-400 dark:text-slate-500" />
-                </div>
-              )
-            )}
+              <span className="text-sm font-medium text-white text-center line-clamp-2">
+                {sanitizeStepText(job.currentStep)}
+              </span>
+              {job.progress !== undefined && job.progress > 0 && (
+                <span className="text-xs text-white/70 mt-1">
+                  {Math.round(job.progress)}% complete
+                </span>
+              )}
+            </div>
           </div>
+        ) : job.topAssetThumbnail ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={job.topAssetThumbnail}
+            alt={job.title}
+            className="w-full h-full object-cover"
+          />
+        ) : job.previewThumbnails && job.previewThumbnails.length > 0 ? (
+          // Fallback to first preview thumbnail for backwards compatibility
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={job.previewThumbnails[0]}
+            alt={job.title}
+            className="w-full h-full object-cover"
+          />
         ) : job.thumbnailUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -171,31 +195,45 @@ export function JobCard({
           </div>
         )}
 
-        {/* Hover Overlay */}
-        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-          <span className="inline-flex items-center gap-1.5 text-white text-sm font-medium">
-            View {job.assetCount} {assetLabel}
-            <ChevronRight className="w-4 h-4" />
-          </span>
-        </div>
+        {/* Progress Bar - Only shown for processing jobs */}
+        {job.isProcessing && job.progress !== undefined && (
+          <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-black/40">
+            <div
+              className="h-full bg-gradient-to-r from-red-500 to-red-400 transition-all duration-500 ease-out"
+              style={{ width: `${Math.min(100, Math.max(0, job.progress))}%` }}
+            />
+          </div>
+        )}
+
+        {/* Hover Overlay - Only for completed jobs */}
+        {!job.isProcessing && (
+          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+            <span className="inline-flex items-center gap-1.5 text-white text-sm font-medium">
+              View {job.assetCount} {assetLabel}
+              <ChevronRight className="w-4 h-4" />
+            </span>
+          </div>
+        )}
 
         {/* Status Badge */}
         <div className="absolute top-2 left-2 flex items-center gap-1.5 px-2 py-1 rounded-full bg-black/60 backdrop-blur-sm">
           {getStatusIcon(job.status)}
           <span className="text-[10px] font-medium text-white capitalize">
-            {job.status}
+            {job.isProcessing ? "Processing" : job.status}
           </span>
         </div>
 
-        {/* Asset Count Badge */}
-        <div className="absolute top-2 right-2 px-2 py-1 rounded-full bg-black/60 backdrop-blur-sm">
-          <span className="text-[10px] font-medium text-white">
-            {job.assetCount} {assetLabel}
-          </span>
-        </div>
+        {/* Asset Count Badge - Only for completed jobs with assets */}
+        {!job.isProcessing && job.assetCount > 0 && (
+          <div className="absolute top-2 right-2 px-2 py-1 rounded-full bg-black/60 backdrop-blur-sm">
+            <span className="text-[10px] font-medium text-white">
+              {job.assetCount} {assetLabel}
+            </span>
+          </div>
+        )}
 
         {/* Menu Button (optional) */}
-        {showMenu && onMenuClick && (
+        {showMenu && onMenuClick && !job.isProcessing && (
           <button
             type="button"
             onClick={(e) => {
@@ -221,16 +259,29 @@ export function JobCard({
               <Clock className="w-3 h-3" />
               {formatDate(job.createdAt)}
             </span>
-            {job.averageScore !== undefined && job.averageScore > 0 && (
+            {!job.isProcessing && job.topAssetScore !== undefined && job.topAssetScore > 0 ? (
+              <span className={`font-medium ${getScoreColor(job.topAssetScore)}`}>
+                {Math.round(job.topAssetScore)}% top
+              </span>
+            ) : !job.isProcessing && job.averageScore !== undefined && job.averageScore > 0 && (
               <span className={`font-medium ${getScoreColor(job.averageScore)}`}>
                 {Math.round(job.averageScore)}% avg
               </span>
             )}
           </div>
 
-          {/* Visibility Status */}
+          {/* Visibility Status / Processing Status */}
           <div className="flex items-center gap-1">
-            {job.publicCount > 0 ? (
+            {job.isProcessing ? (
+              <span className="inline-flex items-center gap-1 text-amber-500">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                <span className="text-[10px]">
+                  {job.progress !== undefined && job.progress > 0
+                    ? `${Math.round(job.progress)}%`
+                    : "Starting..."}
+                </span>
+              </span>
+            ) : job.publicCount > 0 ? (
               <span className="inline-flex items-center gap-0.5 text-green-500">
                 <Eye className="w-3 h-3" />
                 {job.publicCount}

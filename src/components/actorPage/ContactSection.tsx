@@ -23,6 +23,11 @@ type ContactSectionProps = {
   actorProfileId: Id<"actor_profiles">;
   primaryColor?: string;
   onConnectClick?: () => void;
+  // Event tracking callbacks
+  onBookingFormStart?: () => void;
+  onBookingFormSubmit?: () => void;
+  onEmailSignupStart?: () => void;
+  onEmailSignupComplete?: () => void;
 };
 
 export const ContactSection: FC<ContactSectionProps> = ({
@@ -31,6 +36,10 @@ export const ContactSection: FC<ContactSectionProps> = ({
   actorProfileId,
   primaryColor = "#FF1744",
   onConnectClick,
+  onBookingFormStart,
+  onBookingFormSubmit,
+  onEmailSignupStart,
+  onEmailSignupComplete,
 }) => {
   const submitInquiry = useMutation(api.inquiries.submitBookingInquiry);
 
@@ -48,9 +57,15 @@ export const ContactSection: FC<ContactSectionProps> = ({
         projectType: data.projectType,
         message: data.message,
       });
+      onBookingFormSubmit?.();
     },
-    [submitInquiry, actorProfileId]
+    [submitInquiry, actorProfileId, onBookingFormSubmit]
   );
+
+  const handleEmailSignupClick = useCallback(() => {
+    onEmailSignupStart?.();
+    onConnectClick?.();
+  }, [onConnectClick, onEmailSignupStart]);
 
   return (
     <section className="min-h-[50vh] bg-[#05040A] py-12">
@@ -78,7 +93,7 @@ export const ContactSection: FC<ContactSectionProps> = ({
           <FollowTheJourney
             socials={socials}
             primaryColor={primaryColor}
-            onEmailSignup={onConnectClick}
+            onEmailSignup={handleEmailSignupClick}
             actorProfileId={actorProfileId}
           />
         </div>

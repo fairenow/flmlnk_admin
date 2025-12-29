@@ -4,6 +4,7 @@ import type { FC } from "react";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { Play, Pause, Volume2, VolumeX, Share2, Link } from "lucide-react";
+import type { Id } from "@convex/_generated/dataModel";
 import { SocialBar } from "./SocialBar";
 import {
   getVideoInfo,
@@ -63,7 +64,15 @@ type HeroProps = {
   onConnectClick?: () => void;
   isAuthenticated?: boolean;
   onShowEmailModal?: (show: boolean) => void;
-  actorProfileId?: string;
+  actorProfileId?: Id<"actor_profiles">;
+  // Event tracking callbacks
+  onWatchCtaClick?: (label: string, url: string) => void;
+  onGetUpdatesClick?: () => void;
+  onShareClick?: () => void;
+  onVideoPlay?: () => void;
+  onVideoPause?: () => void;
+  onMuteToggle?: (isMuted: boolean) => void;
+  onFullscreenEnter?: () => void;
 };
 
 // Wrapper interface for unified player controls
@@ -94,6 +103,14 @@ export const Hero: FC<HeroProps> = ({
   isAuthenticated = false,
   onShowEmailModal,
   actorProfileId,
+  // Event tracking callbacks
+  onWatchCtaClick,
+  onGetUpdatesClick,
+  onShareClick,
+  onVideoPlay,
+  onVideoPause,
+  onMuteToggle,
+  onFullscreenEnter,
 }) => {
   const primaryColor = theme.primaryColor ?? "#FF1744";
   const hasWatchCta = watchCtaUrl && watchCtaUrl !== "#";
@@ -463,25 +480,31 @@ export const Hero: FC<HeroProps> = ({
       } else {
         activePlayer.mute();
       }
-      setIsMuted(!isMuted);
+      const newMutedState = !isMuted;
+      setIsMuted(newMutedState);
+      onMuteToggle?.(newMutedState);
     }
-  }, [isMuted, player, fullscreenPlayer, isFullscreenVideo]);
+  }, [isMuted, player, fullscreenPlayer, isFullscreenVideo, onMuteToggle]);
 
   const handlePlayPause = useCallback(() => {
     if (player) {
       if (isPlaying) {
         player.pause();
+        onVideoPause?.();
       } else {
         player.play();
+        onVideoPlay?.();
         if (isMuted) {
           player.unmute();
           setIsMuted(false);
+          onMuteToggle?.(false);
         }
       }
     }
-  }, [player, isPlaying, isMuted]);
+  }, [player, isPlaying, isMuted, onVideoPlay, onVideoPause, onMuteToggle]);
 
   const handleShare = useCallback(() => {
+    onShareClick?.();
     if (navigator.share) {
       navigator.share({
         title: featuredProject?.title || displayName,
@@ -492,7 +515,7 @@ export const Hero: FC<HeroProps> = ({
       navigator.clipboard.writeText(window.location.href);
       alert('Link copied to clipboard!');
     }
-  }, [featuredProject, displayName, headline]);
+  }, [featuredProject, displayName, headline, onShareClick]);
 
   const hasVideo = Boolean(videoId);
 
@@ -561,7 +584,10 @@ export const Hero: FC<HeroProps> = ({
           {/* Fullscreen Button - Shows in landscape when playing */}
           {isLandscape && isPlaying && (
             <button
-              onClick={() => setIsFullscreenVideo(true)}
+              onClick={() => {
+                onFullscreenEnter?.();
+                setIsFullscreenVideo(true);
+              }}
               className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[30] bg-black/80 backdrop-blur-sm text-white px-8 py-4 rounded-full font-semibold flex items-center gap-3 hover:bg-black/90 transition-all transform hover:scale-105 shadow-2xl border border-white/30"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -704,7 +730,15 @@ export const Hero: FC<HeroProps> = ({
                   isPlaying && !isMuted && !showControls ? 'opacity-0' : 'opacity-100'
                 }`}>
                   <button
-                    onClick={() => hasWatchCta ? window.open(watchCtaUrl, '_blank') : onConnectClick?.()}
+                    onClick={() => {
+                      if (hasWatchCta) {
+                        onWatchCtaClick?.(watchCtaLabel || 'Watch Now', watchCtaUrl || '');
+                        window.open(watchCtaUrl, '_blank');
+                      } else {
+                        onGetUpdatesClick?.();
+                        onConnectClick?.();
+                      }
+                    }}
                     className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-semibold transition-all shadow-lg shadow-red-900/30 hover:scale-[1.02] active:scale-95 text-base"
                   >
                     <Link className="w-5 h-5" />
@@ -734,6 +768,7 @@ export const Hero: FC<HeroProps> = ({
                     href={watchCtaUrl}
                     target="_blank"
                     rel="noopener noreferrer"
+                    onClick={() => onWatchCtaClick?.(watchCtaLabel || 'Watch Now', watchCtaUrl || '')}
                     className="flex items-center justify-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3 font-semibold rounded transition-all shadow-lg shadow-red-900/30 hover:scale-[1.02] active:scale-95 text-sm sm:text-base text-white bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600"
                   >
                     <Link className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -744,7 +779,10 @@ export const Hero: FC<HeroProps> = ({
                 {onConnectClick && (
                   <button
                     type="button"
-                    onClick={onConnectClick}
+                    onClick={() => {
+                      onGetUpdatesClick?.();
+                      onConnectClick();
+                    }}
                     className="flex items-center justify-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3 rounded border border-white/20 bg-white/10 text-white font-medium backdrop-blur-sm transition hover:bg-white/20 text-sm sm:text-base"
                   >
                     Get Updates

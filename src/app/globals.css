@@ -1,0 +1,171 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Dark theme (default) */
+:root,
+.dark {
+  color-scheme: dark;
+  --theme-bg: #0b0d10;
+  --theme-bg-secondary: #11141b;
+  --theme-bg-card: #0f1219;
+  --theme-bg-input: #161a24;
+  --theme-bg-sidebar: linear-gradient(to bottom, #1b1f27, #11141b, #0c0f15);
+  --theme-text-primary: #ffffff;
+  --theme-text-secondary: #e2e8f0;
+  --theme-text-muted: #94a3b8;
+  --theme-border: rgba(127, 29, 29, 0.4);
+  --theme-border-focus: #f53c56;
+  --theme-section-border: rgba(127, 29, 29, 0.5);
+  --theme-card-shadow: rgba(69, 10, 10, 0.3);
+}
+
+/* Light theme */
+.light {
+  color-scheme: light;
+  --theme-bg: #ffffff;
+  --theme-bg-secondary: #f8fafc;
+  --theme-bg-card: #ffffff;
+  --theme-bg-input: #ffffff;
+  --theme-bg-sidebar: linear-gradient(to bottom, #1b1f27, #11141b, #0c0f15);
+  --theme-text-primary: #0f172a;
+  --theme-text-secondary: #334155;
+  --theme-text-muted: #64748b;
+  --theme-border: rgba(220, 20, 60, 0.4);
+  --theme-border-focus: #dc143c;
+  --theme-section-border: rgba(220, 20, 60, 0.5);
+  --theme-card-shadow: rgba(220, 20, 60, 0.15);
+}
+
+html {
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+body {
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
+  min-height: 100vh;
+  font-family: var(--font-sans, system-ui, -apple-system, "Segoe UI", sans-serif);
+  background-color: var(--theme-bg);
+  color: var(--theme-text-secondary);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* Dark theme body gradient */
+.dark body,
+:root body {
+  background: radial-gradient(circle at 20% 20%, rgba(240, 45, 96, 0.08), transparent 35%),
+    radial-gradient(circle at 80% 0%, rgba(255, 77, 121, 0.12), transparent 30%),
+    #0b0d10;
+}
+
+/* Light theme body - clean white with subtle red accent */
+.light body {
+  background: radial-gradient(circle at 20% 20%, rgba(220, 20, 60, 0.03), transparent 40%),
+    radial-gradient(circle at 80% 0%, rgba(220, 20, 60, 0.02), transparent 35%),
+    #ffffff;
+}
+
+iframe[src*="player.vimeo.com"],
+.vimeo-iframe {
+  background-color: #000;
+}
+
+a {
+  color: inherit;
+}
+
+.glow-ring {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.03), 0 20px 80px rgba(0, 0, 0, 0.45);
+}
+
+.card-sheen {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent 40%);
+}
+
+@keyframes floaty {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-20px) rotate(2deg);
+  }
+}
+
+/* Film grain noise effect for backgrounds */
+.bg-noise {
+  background-image:
+    repeating-linear-gradient(
+      45deg,
+      transparent,
+      transparent 2px,
+      rgba(255, 255, 255, 0.03) 2px,
+      rgba(255, 255, 255, 0.03) 4px
+    ),
+    repeating-linear-gradient(
+      -45deg,
+      transparent,
+      transparent 2px,
+      rgba(0, 0, 0, 0.05) 2px,
+      rgba(0, 0, 0, 0.05) 4px
+    );
+}
+
+/* TikTok/Reels player layout */
+body.video-player-open {
+  overflow: hidden !important;
+  position: fixed !important;
+  width: 100% !important;
+  height: 100vh !important;
+  touch-action: none !important;
+}
+
+@media (max-width: 768px) {
+  body.video-player-open {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: none;
+  }
+
+  html.video-player-open {
+    overflow: hidden !important;
+    position: fixed !important;
+    height: 100% !important;
+  }
+}
+
+.video-player-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+@media (max-width: 768px) {
+  .video-player-container iframe {
+    position: absolute !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    width: 100% !important;
+    height: 178vw !important; /* 9:16 aspect ratio for vertical video */
+    min-height: 100vh !important;
+    min-width: 56.25vh !important; /* 9:16 aspect ratio */
+  }
+}
+
+@media (min-width: 769px) {
+  .video-player-container iframe {
+    position: absolute !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    width: 56.25vh !important; /* 9:16 aspect ratio */
+    height: 100vh !important;
+    max-width: 100vw !important;
+    max-height: 100vh !important;
+  }
+}

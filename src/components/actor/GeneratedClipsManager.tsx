@@ -117,6 +117,8 @@ type UnifiedJob = {
   createdAt: number;
   completedAt?: number;
   previewThumbnails: string[];
+  topAssetThumbnail?: string;
+  topAssetScore?: number;
   averageScore: number;
   clips: UnifiedClip[];
 };
@@ -180,12 +182,18 @@ export function GeneratedClipsManager({
   const URL_REFRESH_BUFFER_MS = 5 * 60 * 1000; // Refresh 5 minutes before expiry
   const [fetchTrigger, setFetchTrigger] = useState(0);
 
+  // Track previous in-progress job IDs to detect when jobs complete
+  const prevInProgressJobIdsRef = useRef<Set<string>>(new Set());
+
   const clips = useQuery(api.clipGenerator.getGeneratedClipsByProfile, { slug });
   const jobs = useQuery(api.clipGenerator.getJobsByProfile, { slug });
   const clipsGroupedByJob = useQuery(api.clipGenerator.getClipsGroupedByJob, { slug });
   const deleteClip = useMutation(api.clipGenerator.deleteGeneratedClip);
   const toggleVisibility = useMutation(api.clipGenerator.toggleGeneratedClipVisibility);
   const cancelJob = useMutation(api.clipGenerator.cancelJob);
+
+  // Query for in-progress processing jobs (real-time updates)
+  const inProgressJobs = useQuery(api.processing.getInProgressJobs, { slug });
 
   // R2 processing clips mutations
   const deleteR2Clip = useMutation(api.processing.deleteProcessingClip);
@@ -248,7 +256,40 @@ export function GeneratedClipsManager({
     return () => clearInterval(checkCacheInterval);
   }, [shouldRefreshUrls, r2JobGroups.length, r2ClipsLoading]);
 
-  // Auto-thumbnail capture for clips without custom thumbnails
+  // Detect when jobs complete (transition from in-progress to done) and trigger re-fetch
+  // This ensures newly completed clips appear without manual refresh
+  useEffect(() => {
+    if (!inProgressJobs) return;
+
+    const currentJobIds = new Set(inProgressJobs.map((job) => job._id));
+    const prevJobIds = prevInProgressJobIdsRef.current;
+
+    // Check if any previously in-progress job is now gone (completed or failed)
+    let jobCompleted = false;
+    for (const prevId of prevJobIds) {
+      if (!currentJobIds.has(prevId)) {
+        jobCompleted = true;
+        console.log("[GeneratedClipsManager] Job completed, triggering re-fetch:", prevId);
+        break;
+      }
+    }
+
+    // Update the ref with current job IDs
+    prevInProgressJobIdsRef.current = currentJobIds;
+
+    // If a job completed, invalidate cache and trigger re-fetch after a short delay
+    // The delay allows the backend to finish writing clips to the database
+    if (jobCompleted && !r2ClipsLoading) {
+      const timeoutId = setTimeout(() => {
+        urlCacheRef.current = null;
+        setFetchTrigger((prev) => prev + 1);
+      }, 1000); // 1 second delay to ensure clips are written
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [inProgressJobs, r2ClipsLoading]);
+
+  // Auto-thumbnail capture for legacy generated clips without custom thumbnails
   useEffect(() => {
     if (!clips) return;
 
@@ -273,13 +314,47 @@ export function GeneratedClipsManager({
     processAutoThumbnails();
   }, [clips, captureFirstFrame]);
 
-  // Create unified job list combining generated jobs and processing jobs
-  const unifiedJobs = useMemo((): UnifiedJob[] => {
-    const allJobs: UnifiedJob[] = [];
+  // Auto-thumbnail capture for R2/Klap processing clips without custom thumbnails
+  useEffect(() => {
+    if (!r2JobGroups || r2JobGroups.length === 0) return;
+
+    const processR2AutoThumbnails = async () => {
+      for (const jobGroup of r2JobGroups) {
+        for (const clip of jobGroup.clips) {
+          // Skip if already processed or has a custom thumbnail
+          if (autoThumbnailProcessed.current.has(clip._id) || clip.customThumbnailUrl) {
+            continue;
+          }
+
+          // Skip if no video URL available
+          if (!clip.clipUrl) {
+            continue;
+          }
+
+          autoThumbnailProcessed.current.add(clip._id);
+
+          // Capture first frame as thumbnail for processing clips (includes Klap clips)
+          captureFirstFrame(clip.clipUrl, clip._id as Id<"processing_clips">, "processing").catch((err) => {
+            console.error("Auto-thumbnail capture failed for processing clip:", err);
+          });
+        }
+      }
+    };
+
+    processR2AutoThumbnails();
+  }, [r2JobGroups, captureFirstFrame]);
+
+  // Create unified job list combining generated jobs, processing jobs, and in-progress jobs
+  const unifiedJobs = useMemo((): (UnifiedJob & { isProcessing?: boolean; progress?: number; currentStep?: string })[] => {
+    const allJobs: (UnifiedJob & { isProcessing?: boolean; progress?: number; currentStep?: string })[] = [];
+
+    // Track job IDs that already have clips (completed or ready)
+    const completedJobIds = new Set<string>();
 
     // Add generated clip jobs
     if (clipsGroupedByJob) {
       for (const jobGroup of clipsGroupedByJob) {
+        completedJobIds.add(jobGroup.job._id);
         const jobClips: UnifiedClip[] = jobGroup.clips.map((clip: GeneratedClip) => ({
           id: clip._id,
           type: "generated" as const,
@@ -297,6 +372,12 @@ export function GeneratedClipsManager({
 
         const publicCount = jobClips.filter((c) => c.isPublic).length;
         const totalScore = jobClips.reduce((sum, c) => sum + c.score, 0);
+
+        // Find the highest rated clip
+        const topClip = jobClips.reduce((best, clip) =>
+          clip.score > (best?.score ?? 0) ? clip : best,
+          jobClips[0]
+        );
         const previewThumbs = jobClips
           .slice(0, 4)
           .map((c) => c.thumbnailUrl)
@@ -313,14 +394,18 @@ export function GeneratedClipsManager({
           createdAt: jobGroup.job.createdAt,
           completedAt: jobGroup.job.completedAt,
           previewThumbnails: previewThumbs,
+          topAssetThumbnail: topClip?.thumbnailUrl,
+          topAssetScore: topClip?.score,
           averageScore: jobClips.length > 0 ? totalScore / jobClips.length : 0,
           clips: jobClips,
+          isProcessing: false,
         });
       }
     }
 
-    // Add R2 processing jobs
+    // Add R2 processing jobs with completed clips
     for (const jobGroup of r2JobGroups) {
+      completedJobIds.add(jobGroup.job._id);
       const jobClips: UnifiedClip[] = jobGroup.clips.map((clip) => ({
         id: clip._id,
         type: "processing" as const,
@@ -338,6 +423,12 @@ export function GeneratedClipsManager({
 
       const publicCount = jobClips.filter((c) => c.isPublic).length;
       const totalScore = jobClips.reduce((sum, c) => sum + c.score, 0);
+
+      // Find the highest rated clip
+      const topClip = jobClips.reduce((best, clip) =>
+        clip.score > (best?.score ?? 0) ? clip : best,
+        jobClips[0]
+      );
       const previewThumbs = jobClips
         .slice(0, 4)
         .map((c) => c.thumbnailUrl)
@@ -354,25 +445,80 @@ export function GeneratedClipsManager({
         createdAt: jobGroup.job.createdAt,
         completedAt: jobGroup.job.completedAt,
         previewThumbnails: previewThumbs,
+        topAssetThumbnail: topClip?.thumbnailUrl,
+        topAssetScore: topClip?.score,
         averageScore: jobClips.length > 0 ? totalScore / jobClips.length : 0,
         clips: jobClips,
+        isProcessing: false,
       });
     }
 
+    // Add in-progress processing jobs (these don't have clips yet)
+    if (inProgressJobs) {
+      for (const job of inProgressJobs) {
+        // Skip if this job already has clips (it's in the completed list)
+        if (completedJobIds.has(job._id)) {
+          continue;
+        }
+
+        allJobs.push({
+          id: job._id,
+          type: "processing",
+          title: job.title || "Processing Video",
+          sourceUrl: job.sourceUrl,
+          status: job.status,
+          assetCount: 0,
+          publicCount: 0,
+          createdAt: job.createdAt,
+          previewThumbnails: [],
+          averageScore: 0,
+          clips: [],
+          isProcessing: true,
+          progress: job.progress,
+          currentStep: job.currentStep,
+        });
+      }
+    }
+
     // Sort based on filter option
+    // Always put processing jobs at the top when sorting by recent
     switch (filterOption) {
       case "recent":
-        return allJobs.sort((a, b) => b.createdAt - a.createdAt);
+        return allJobs.sort((a, b) => {
+          // Processing jobs always come first
+          if (a.isProcessing && !b.isProcessing) return -1;
+          if (!a.isProcessing && b.isProcessing) return 1;
+          return b.createdAt - a.createdAt;
+        });
       case "oldest":
-        return allJobs.sort((a, b) => a.createdAt - b.createdAt);
+        return allJobs.sort((a, b) => {
+          // Processing jobs always come first
+          if (a.isProcessing && !b.isProcessing) return -1;
+          if (!a.isProcessing && b.isProcessing) return 1;
+          return a.createdAt - b.createdAt;
+        });
       case "highest":
-        return allJobs.sort((a, b) => b.averageScore - a.averageScore);
+        return allJobs.sort((a, b) => {
+          // Processing jobs always come first
+          if (a.isProcessing && !b.isProcessing) return -1;
+          if (!a.isProcessing && b.isProcessing) return 1;
+          return b.averageScore - a.averageScore;
+        });
       case "lowest":
-        return allJobs.sort((a, b) => a.averageScore - b.averageScore);
+        return allJobs.sort((a, b) => {
+          // Processing jobs always come first
+          if (a.isProcessing && !b.isProcessing) return -1;
+          if (!a.isProcessing && b.isProcessing) return 1;
+          return a.averageScore - b.averageScore;
+        });
       default:
-        return allJobs.sort((a, b) => b.createdAt - a.createdAt);
+        return allJobs.sort((a, b) => {
+          if (a.isProcessing && !b.isProcessing) return -1;
+          if (!a.isProcessing && b.isProcessing) return 1;
+          return b.createdAt - a.createdAt;
+        });
     }
-  }, [clipsGroupedByJob, r2JobGroups, filterOption]);
+  }, [clipsGroupedByJob, r2JobGroups, filterOption, inProgressJobs]);
 
   // Get selected job for detail view
   const selectedJob = selectedJobId ? unifiedJobs.find((j) => j.id === selectedJobId) : null;
@@ -693,11 +839,16 @@ export function GeneratedClipsManager({
                 createdAt: job.createdAt,
                 completedAt: job.completedAt,
                 previewThumbnails: job.previewThumbnails,
+                topAssetThumbnail: job.topAssetThumbnail,
+                topAssetScore: job.topAssetScore,
                 averageScore: job.averageScore,
+                isProcessing: job.isProcessing,
+                progress: job.progress,
+                currentStep: job.currentStep,
               }}
               assetType="clips"
               isSelected={selectedJobId === job.id}
-              onClick={() => handleJobClick(job.id)}
+              onClick={() => job.isProcessing ? undefined : handleJobClick(job.id)}
             />
           ))}
         </div>

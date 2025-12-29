@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useQuery, useAction } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Doc, Id } from "@convex/_generated/dataModel";
@@ -9,7 +8,7 @@ import { useParams, useSearchParams, useRouter } from "next/navigation";
 
 import { useSession } from "@/lib/auth-client";
 import { injectGTMForSlug, pushGTMEvent } from "@/lib/gtm";
-import { buildSignInUrl } from "@/lib/routes";
+import { useEventTracking } from "@/hooks/useEventTracking";
 
 import {
   Hero,
@@ -77,6 +76,29 @@ export default function FilmmakerPublicPage() {
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>(tabParam || "about");
   const [selectedProjectId, setSelectedProjectId] = useState<Id<"projects"> | null>(null);
+  const previousTabRef = useRef<TabKey>(tabParam || "about");
+
+  // Initialize event tracking with profile data when available
+  const {
+    trackEvent,
+    trackCtaClick,
+    trackSocialClick,
+    trackTabChange,
+    trackVideoEvent,
+    trackAssetEvent,
+    trackProjectSelect,
+    trackOutboundClick,
+    trackClipEvent,
+    trackTrailerEvent,
+    trackFilmEvent,
+    trackBookingEvent,
+    trackHeroEvent,
+  } = useEventTracking({
+    actorProfileId: data?.profile?._id,
+    slug,
+    enableScrollTracking: true,
+    enableTimeTracking: true,
+  });
 
   // Sync tab with URL
   useEffect(() => {
@@ -88,7 +110,10 @@ export default function FilmmakerPublicPage() {
   // Update URL when tab changes
   const handleTabChange = useCallback(
     (tab: TabKey) => {
+      const previousTab = previousTabRef.current;
       setActiveTab(tab);
+      previousTabRef.current = tab;
+
       const newParams = new URLSearchParams(searchParams.toString());
       if (tab === "about") {
         newParams.delete("tab");
@@ -99,16 +124,23 @@ export default function FilmmakerPublicPage() {
         ? `/f/${slug}?${newParams.toString()}`
         : `/f/${slug}`;
       router.push(newUrl, { scroll: false });
+
+      // Track tab change with granular event tracking
+      trackTabChange(tab, previousTab);
       pushGTMEvent("tab_change", { slug, tab });
     },
-    [searchParams, slug, router]
+    [searchParams, slug, router, trackTabChange]
   );
 
   // Inject GTM and track page view
   useEffect(() => {
     injectGTMForSlug(slug);
     pushGTMEvent("page_view", { slug });
-  }, [slug]);
+    // Track page view in Convex for internal analytics
+    if (data?.profile?._id) {
+      trackEvent("page_view");
+    }
+  }, [slug, data?.profile?._id, trackEvent]);
 
   // Handle clip deep link
   useEffect(() => {
@@ -211,8 +243,12 @@ export default function FilmmakerPublicPage() {
     setSelectedProjectId(projectId);
     // Scroll to top to see the hero with the new trailer
     window.scrollTo({ top: 0, behavior: "smooth" });
+
+    // Track project selection for granular analytics
+    const project = data?.projects?.find((p: any) => p._id === projectId);
+    trackProjectSelect(projectId as string, project?.title);
     pushGTMEvent("select_project_trailer", { slug, projectId });
-  }, [slug]);
+  }, [slug, data?.projects, trackProjectSelect]);
 
   if (data === undefined) {
     return (
@@ -301,6 +337,10 @@ export default function FilmmakerPublicPage() {
             primaryColor={profile.theme.primaryColor}
             selectedProjectId={selectedProjectId}
             onSelectProject={handleSelectProject}
+            onFilmCardView={(projectId, projectTitle) => trackFilmEvent("view", projectId, projectTitle)}
+            onFilmCardClick={(projectId, projectTitle) => trackFilmEvent("click", projectId, projectTitle)}
+            onFilmTrailerClick={(projectId, projectTitle) => trackFilmEvent("trailer_click", projectId, projectTitle)}
+            onFilmWatchCtaClick={(projectId, projectTitle, ctaUrl) => trackFilmEvent("watch_cta", projectId, projectTitle, ctaUrl)}
           />
         );
 
@@ -313,6 +353,16 @@ export default function FilmmakerPublicPage() {
               featuredClipId={data.featuredClip?._id}
               primaryColor={profile.theme.primaryColor}
               onClipShare={handleGalleryClipShare}
+              onClipView={(clipId, clipTitle) => trackClipEvent("view", clipId, clipTitle, "reel")}
+              onClipPlay={(clipId, clipTitle) => trackClipEvent("play", clipId, clipTitle, "reel")}
+              onFullscreenOpen={(clipId, clipTitle) => trackClipEvent("fullscreen_open", clipId, clipTitle, "reel")}
+              onFullscreenClose={() => trackClipEvent("fullscreen_close")}
+              onNavigateNext={(clipId, clipTitle) => trackClipEvent("navigate_next", clipId, clipTitle, "reel")}
+              onNavigatePrev={(clipId, clipTitle) => trackClipEvent("navigate_prev", clipId, clipTitle, "reel")}
+              onContributionClick={(clipId) => trackClipEvent("contribution", clipId, undefined, "reel")}
+              onVideoPlay={() => trackVideoEvent("play")}
+              onVideoPause={() => trackVideoEvent("pause")}
+              onMuteToggle={() => trackVideoEvent("mute_toggle")}
             />
             {/* AI Generated & Uploaded Clips Section */}
             {((publicGeneratedClips && publicGeneratedClips.length > 0) || publicProcessingClips.length > 0) && (
@@ -321,6 +371,12 @@ export default function FilmmakerPublicPage() {
                 processingClips={publicProcessingClips}
                 slug={slug}
                 primaryColor={profile.theme.primaryColor}
+                onClipView={(clipId, clipTitle, clipType) => trackClipEvent("view", clipId, clipTitle, clipType === "generated" ? "generated_clip" : "processing_clip")}
+                onClipPlay={(clipId, clipTitle, clipType) => trackClipEvent("play", clipId, clipTitle, clipType === "generated" ? "generated_clip" : "processing_clip")}
+                onFullscreenOpen={(clipId, clipTitle, clipType) => trackClipEvent("fullscreen_open", clipId, clipTitle, clipType === "generated" ? "generated_clip" : "processing_clip")}
+                onFullscreenClose={() => trackClipEvent("fullscreen_close")}
+                onNavigateNext={(clipId, clipTitle) => trackClipEvent("navigate_next", clipId, clipTitle)}
+                onNavigatePrev={(clipId, clipTitle) => trackClipEvent("navigate_prev", clipId, clipTitle)}
               />
             )}
           </div>
@@ -334,6 +390,10 @@ export default function FilmmakerPublicPage() {
             actorProfileId={profile._id}
             primaryColor={profile.theme.primaryColor}
             onConnectClick={handleConnectClick}
+            onBookingFormStart={() => trackBookingEvent("form_started", "booking")}
+            onBookingFormSubmit={() => trackBookingEvent("form_submitted", "booking")}
+            onEmailSignupStart={() => trackBookingEvent("email_started", "newsletter")}
+            onEmailSignupComplete={() => trackBookingEvent("email_completed", "newsletter")}
           />
         );
 
@@ -344,22 +404,10 @@ export default function FilmmakerPublicPage() {
 
   return (
     <main className="min-h-screen bg-black text-white">
-      {/* Owner/Auth controls */}
-      {!isOwner && !isAuthenticated ? (
-        <div className="fixed bottom-6 right-6 z-50">
-          <Link
-            href={buildSignInUrl({ fromSlug: slug, next: "/dashboard/actor" })}
-            className="rounded-full border border-white/10 bg-black/60 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-black/40 backdrop-blur hover:border-white/30 transition"
-          >
-            Sign in to edit
-          </Link>
-        </div>
-      ) : null}
-
       {/* Hero Section - Cinematic or Standard */}
       {useCinematicLayout ? (
         <CinematicHero
-          key={selectedProjectId || "default"} // Force re-mount when project changes
+          key={`${selectedProjectId || "default"}-${profile._id}`} // Force re-mount when project changes or profile becomes available
           displayName={profile.displayName}
           avatarUrl={profile.avatarUrl}
           slug={slug}
@@ -385,11 +433,18 @@ export default function FilmmakerPublicPage() {
           onShare={handleClipShare}
           isAuthenticated={isAuthenticated}
           onShowEmailModal={setShowEmailModal}
-          actorProfileId={profile._id}
+          actorProfileId={data?.profile?._id}
+          onWatchCtaClick={(label, url) => trackCtaClick("watch", label, url)}
+          onGetUpdatesClick={() => trackCtaClick("get_updates", "Get Updates", "")}
+          onShareClick={() => trackCtaClick("share", "Share", "")}
+          onVideoPlay={() => trackVideoEvent("play")}
+          onVideoPause={() => trackVideoEvent("pause")}
+          onMuteToggle={() => trackVideoEvent("mute_toggle")}
+          onFullscreenEnter={() => trackVideoEvent("fullscreen")}
         />
       ) : (
         <Hero
-          key={selectedProjectId || "default"} // Force re-mount when project changes
+          key={`${selectedProjectId || "default"}-${profile._id}`} // Force re-mount when project changes or profile becomes available
           displayName={profile.displayName}
           headline={profile.headline}
           location={profile.location}
@@ -418,7 +473,35 @@ export default function FilmmakerPublicPage() {
           onConnectClick={handleConnectClick}
           isAuthenticated={isAuthenticated}
           onShowEmailModal={setShowEmailModal}
-          actorProfileId={profile._id}
+          // Event tracking callbacks with project context
+          onWatchCtaClick={(label, url) => trackCtaClick("watch", label, url, {
+            projectId: activeHeroData.project?._id as string,
+            projectTitle: activeHeroData.project?.title,
+          })}
+          onGetUpdatesClick={() => trackCtaClick("get_updates", undefined, undefined, {
+            projectId: activeHeroData.project?._id as string,
+            projectTitle: activeHeroData.project?.title,
+          })}
+          onShareClick={() => trackCtaClick("share", undefined, undefined, {
+            projectId: activeHeroData.project?._id as string,
+            projectTitle: activeHeroData.project?.title,
+          })}
+          onVideoPlay={() => trackVideoEvent("play", undefined, undefined, undefined, {
+            projectId: activeHeroData.project?._id as string,
+            projectTitle: activeHeroData.project?.title,
+          })}
+          onVideoPause={() => trackVideoEvent("pause", undefined, undefined, undefined, {
+            projectId: activeHeroData.project?._id as string,
+            projectTitle: activeHeroData.project?.title,
+          })}
+          onMuteToggle={() => trackVideoEvent("mute_toggle", undefined, undefined, undefined, {
+            projectId: activeHeroData.project?._id as string,
+            projectTitle: activeHeroData.project?.title,
+          })}
+          onFullscreenEnter={() => trackVideoEvent("fullscreen", undefined, undefined, undefined, {
+            projectId: activeHeroData.project?._id as string,
+            projectTitle: activeHeroData.project?.title,
+          })}
         />
       )}
 

@@ -65,6 +65,13 @@ type GeneratedClipsGalleryProps = {
   slug: string;
   primaryColor?: string;
   onClipShare?: (_clipId: Id<"generated_clips">) => void;
+  // Event tracking callbacks
+  onClipView?: (clipId: string, clipTitle: string, clipType: "generated" | "processing") => void;
+  onClipPlay?: (clipId: string, clipTitle: string, clipType: "generated" | "processing") => void;
+  onFullscreenOpen?: (clipId: string, clipTitle: string, clipType: "generated" | "processing") => void;
+  onFullscreenClose?: () => void;
+  onNavigateNext?: (clipId: string, clipTitle: string) => void;
+  onNavigatePrev?: (clipId: string, clipTitle: string) => void;
 };
 
 function formatDuration(seconds: number): string {
@@ -79,6 +86,12 @@ export const GeneratedClipsGallery: FC<GeneratedClipsGalleryProps> = ({
   slug,
   primaryColor = "#FF1744",
   onClipShare,
+  onClipView,
+  onClipPlay,
+  onFullscreenOpen,
+  onFullscreenClose,
+  onNavigateNext,
+  onNavigatePrev,
 }) => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [fullscreenClipIndex, setFullscreenClipIndex] = useState<number | null>(null);
@@ -218,26 +231,38 @@ export const GeneratedClipsGallery: FC<GeneratedClipsGalleryProps> = ({
 
   const openFullscreen = useCallback((index: number) => {
     setFullscreenClipIndex(index);
-  }, []);
+    const clip = unifiedClips[index];
+    onFullscreenOpen?.(clip.id, clip.title, clip.type);
+    onClipPlay?.(clip.id, clip.title, clip.type);
+  }, [unifiedClips, onFullscreenOpen, onClipPlay]);
 
   const closeFullscreen = useCallback(() => {
     setFullscreenClipIndex(null);
     if (videoRef.current) {
       videoRef.current.pause();
     }
-  }, []);
+    onFullscreenClose?.();
+  }, [onFullscreenClose]);
 
   const goToNextClip = useCallback(() => {
     if (fullscreenClipIndex !== null && fullscreenClipIndex < unifiedClips.length - 1) {
-      setFullscreenClipIndex(fullscreenClipIndex + 1);
+      const nextIndex = fullscreenClipIndex + 1;
+      setFullscreenClipIndex(nextIndex);
+      const nextClip = unifiedClips[nextIndex];
+      onNavigateNext?.(nextClip.id, nextClip.title);
+      onClipPlay?.(nextClip.id, nextClip.title, nextClip.type);
     }
-  }, [fullscreenClipIndex, unifiedClips.length]);
+  }, [fullscreenClipIndex, unifiedClips, onNavigateNext, onClipPlay]);
 
   const goToPrevClip = useCallback(() => {
     if (fullscreenClipIndex !== null && fullscreenClipIndex > 0) {
-      setFullscreenClipIndex(fullscreenClipIndex - 1);
+      const prevIndex = fullscreenClipIndex - 1;
+      setFullscreenClipIndex(prevIndex);
+      const prevClip = unifiedClips[prevIndex];
+      onNavigatePrev?.(prevClip.id, prevClip.title);
+      onClipPlay?.(prevClip.id, prevClip.title, prevClip.type);
     }
-  }, [fullscreenClipIndex]);
+  }, [fullscreenClipIndex, unifiedClips, onNavigatePrev, onClipPlay]);
 
   // Touch handlers for swipe
   const handleTouchStart = useCallback((e: ReactTouchEvent) => {

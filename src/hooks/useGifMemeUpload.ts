@@ -87,6 +87,10 @@ const MAX_CONCURRENT_UPLOADS = 3;
 const RETRY_COUNT = 3;
 const RETRY_DELAY_MS = 1000;
 
+// Convex HTTP endpoint for upload proxy (CORS fallback)
+const CONVEX_SITE_URL = process.env.NEXT_PUBLIC_CONVEX_URL?.replace(".cloud", ".site") || "";
+const UPLOAD_PROXY_URL = `${CONVEX_SITE_URL}/r2/upload-part`;
+
 /**
  * Hook for uploading videos for GIF or Meme generation via R2
  */
@@ -176,7 +180,39 @@ export function useGifMemeUpload(
   }, [activeJob?.status, jobId, state, onProcessingComplete, onError]);
 
   /**
+   * Upload a single part via the Convex proxy (CORS fallback)
+   */
+  const uploadPartViaProxy = useCallback(
+    async (
+      url: string,
+      partNumber: number,
+      chunk: Blob,
+      signal: AbortSignal
+    ): Promise<string> => {
+      const response = await fetch(UPLOAD_PROXY_URL, {
+        method: "POST",
+        body: chunk,
+        signal,
+        headers: {
+          "X-Upload-Url": url,
+          "X-Part-Number": partNumber.toString(),
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Proxy upload failed: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data.etag || `"part-${partNumber}"`;
+    },
+    []
+  );
+
+  /**
    * Upload a single part with retry logic
+   * First tries direct upload to R2, falls back to proxy if CORS fails
    */
   const uploadPart = useCallback(
     async (
@@ -186,9 +222,14 @@ export function useGifMemeUpload(
       signal: AbortSignal
     ): Promise<string> => {
       let lastError: Error | null = null;
+      let useProxy = false;
 
       for (let attempt = 0; attempt < RETRY_COUNT; attempt++) {
         try {
+          if (useProxy && UPLOAD_PROXY_URL) {
+            return await uploadPartViaProxy(url, partNumber, chunk, signal);
+          }
+
           const response = await fetch(url, {
             method: "PUT",
             body: chunk,
@@ -205,6 +246,20 @@ export function useGifMemeUpload(
         } catch (err) {
           if (signal.aborted) throw err;
           lastError = err as Error;
+
+          // Check if this is a CORS error - switch to proxy
+          const isCorsOrNetworkError =
+            err instanceof TypeError ||
+            (err instanceof Error && err.message.includes("Failed to fetch"));
+
+          if (isCorsOrNetworkError && UPLOAD_PROXY_URL && !useProxy) {
+            console.warn(
+              `Direct R2 upload failed (likely CORS), switching to proxy for part ${partNumber}`
+            );
+            useProxy = true;
+            continue;
+          }
+
           if (attempt < RETRY_COUNT - 1) {
             await new Promise((r) => setTimeout(r, RETRY_DELAY_MS * (attempt + 1)));
           }
@@ -213,7 +268,7 @@ export function useGifMemeUpload(
 
       throw lastError || new Error("Upload failed after retries");
     },
-    []
+    [uploadPartViaProxy]
   );
 
   /**

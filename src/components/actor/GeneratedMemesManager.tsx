@@ -70,6 +70,8 @@ type UnifiedMemeJob = {
   createdAt: number;
   completedAt?: number;
   previewThumbnails: string[];
+  topAssetThumbnail?: string;
+  topAssetScore?: number;
   averageScore: number;
   memes: MemeWithSignedUrls[];
 };
@@ -228,6 +230,12 @@ export function GeneratedMemesManager({
 
       const publicCount = jobMemes.filter((m) => m.isPublic).length;
       const totalScore = jobMemes.reduce((sum, m) => sum + (m.viralScore ?? 0), 0);
+
+      // Find the highest rated meme
+      const topMeme = jobMemes.reduce((best, meme) =>
+        (meme.viralScore ?? 0) > (best?.viralScore ?? 0) ? meme : best,
+        jobMemes[0]
+      );
       const previewThumbs = jobMemes
         .slice(0, 4)
         .map((m) => m.signedMemeUrl || m.signedFrameUrl)
@@ -243,6 +251,8 @@ export function GeneratedMemesManager({
         createdAt: jobGroup.job.createdAt,
         completedAt: jobGroup.job.completedAt,
         previewThumbnails: previewThumbs,
+        topAssetThumbnail: topMeme?.signedMemeUrl || topMeme?.signedFrameUrl || undefined,
+        topAssetScore: topMeme?.viralScore,
         averageScore: jobMemes.length > 0 ? totalScore / jobMemes.length : 0,
         memes: jobMemes,
       });
@@ -523,6 +533,8 @@ export function GeneratedMemesManager({
                 createdAt: job.createdAt,
                 completedAt: job.completedAt,
                 previewThumbnails: job.previewThumbnails,
+                topAssetThumbnail: job.topAssetThumbnail,
+                topAssetScore: job.topAssetScore,
                 averageScore: job.averageScore,
               }}
               assetType="memes"

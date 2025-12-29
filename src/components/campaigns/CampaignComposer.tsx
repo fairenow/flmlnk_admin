@@ -77,7 +77,6 @@ export function CampaignComposer({
     actorProfileId,
   });
   const siteWideStats = useQuery(api.audienceManagement.getSiteWideAudienceCount, {});
-  const incompleteOnboardingStats = useQuery(api.audienceManagement.getIncompleteOnboardingCount, {});
   const fanEmailsPreview = useQuery(api.audienceManagement.getFanEmailsForAudience, {
     actorProfileId,
     audienceType,
@@ -524,30 +523,7 @@ export function CampaignComposer({
             >
               <option value="creator_subscribers">My Fans ({audienceStats?.active || 0})</option>
               <option value="site_wide">Site-Wide Audience ({siteWideStats?.active || 0})</option>
-              <option value="all_filmmakers">All Filmmakers (Platform Users)</option>
-              {incompleteOnboardingStats?.count !== undefined && incompleteOnboardingStats.count > 0 && (
-                <option value="incomplete_onboarding">
-                  Incomplete Onboarding ({incompleteOnboardingStats.count})
-                </option>
-              )}
             </select>
-
-            {audienceType === "all_filmmakers" && (
-              <div className="mt-2 p-2 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800">
-                <p className="text-xs text-indigo-700 dark:text-indigo-300">
-                  This will send to all registered filmmakers on the platform who have created a profile.
-                </p>
-              </div>
-            )}
-
-            {audienceType === "incomplete_onboarding" && (
-              <div className="mt-2 p-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
-                <p className="text-xs text-amber-700 dark:text-amber-300">
-                  This will send to users who signed up but haven&apos;t completed the onboarding process
-                  (no profile created yet).
-                </p>
-              </div>
-            )}
 
             {/* Audience Preview */}
             {fanEmailsPreview && fanEmailsPreview.active > 0 && (
