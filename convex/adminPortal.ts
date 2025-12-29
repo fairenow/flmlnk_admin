@@ -678,7 +678,7 @@ export const getAllGeneratedClips = query({
           title: clip.title,
           status: clip.status,
           thumbnailUrl: clip.customThumbnailUrl || clip.thumbnailUrl,
-          videoUrl: clip.videoUrl,
+          videoUrl: clip.downloadUrl,
           duration: clip.duration,
           createdAt: clip._creationTime,
           // Profile info
@@ -726,8 +726,7 @@ export const getAllGeneratedMemes = query({
           _id: meme._id,
           caption: meme.caption,
           imageUrl,
-          templateId: meme.templateId,
-          templateName: meme.templateName,
+          templateName: meme.templateName || meme.templateType,
           createdAt: meme._creationTime,
           // Profile info
           profileName: profile?.displayName,
