@@ -2,9 +2,12 @@
 
 import { ConvexProviderWithAuth, ConvexReactClient } from "convex/react";
 import { ReactNode, useCallback, useMemo } from "react";
-import { useSession, authClient } from "@/lib/auth-client";
+import { useSession } from "@/lib/auth-client";
 
 const convex = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+
+// Convex site URL for fetching auth tokens
+const CONVEX_SITE_URL = process.env.NEXT_PUBLIC_CONVEX_SITE_URL;
 
 function useAuth() {
   const { data: session, isPending } = useSession();
@@ -14,13 +17,33 @@ function useAuth() {
       if (!session) {
         return null;
       }
+
+      // Don't try to fetch token if we don't have the Convex site URL
+      if (!CONVEX_SITE_URL) {
+        console.warn("NEXT_PUBLIC_CONVEX_SITE_URL not configured");
+        return null;
+      }
+
       try {
-        // Get Convex token from Better Auth
-        const token = await authClient.getToken({
-          forceRefresh: forceRefreshToken,
+        // Fetch token from Convex site's auth endpoint
+        // The session cookie is shared across subdomains, so this should work
+        const response = await fetch(`${CONVEX_SITE_URL}/auth/session`, {
+          method: "GET",
+          credentials: "include", // Include cookies for cross-origin request
+          headers: {
+            "Content-Type": "application/json",
+          },
         });
-        return token.data?.token ?? null;
-      } catch {
+
+        if (!response.ok) {
+          console.warn("Failed to fetch Convex auth token:", response.status);
+          return null;
+        }
+
+        const data = await response.json();
+        return data.token ?? null;
+      } catch (error) {
+        console.warn("Error fetching Convex auth token:", error);
         return null;
       }
     },
