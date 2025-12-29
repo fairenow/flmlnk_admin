@@ -54,12 +54,12 @@ export function DeepAnalytics({ adminEmail }: DeepAnalyticsProps) {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="overflow-hidden rounded-3xl bg-gradient-to-r from-pink-600 via-pink-500 to-rose-500 p-6 text-white shadow-lg">
+      <div className="overflow-hidden rounded-3xl bg-gradient-to-r from-carpet-red-800 via-carpet-red-600 to-red-500 p-6 text-white shadow-lg shadow-red-950/40">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.25em] text-pink-100">Deep Analytics</p>
+            <p className="text-xs uppercase tracking-[0.25em] text-red-100">Deep Analytics</p>
             <h2 className="text-2xl font-semibold tracking-tight">Platform Overview</h2>
-            <p className="mt-1 text-sm text-pink-100/90">
+            <p className="mt-1 text-sm text-red-100/90">
               User counts, signups, engagement levels, and page-by-page analytics
             </p>
           </div>
@@ -77,12 +77,12 @@ export function DeepAnalytics({ adminEmail }: DeepAnalyticsProps) {
 
       {/* Overview Stats */}
       <div
-        className="rounded-2xl border border-pink-500/20 bg-white/5 overflow-hidden cursor-pointer"
+        className="rounded-2xl border border-red-500/20 bg-white dark:bg-white/5 overflow-hidden cursor-pointer"
         onClick={() => toggleSection("overview")}
       >
-        <div className="flex items-center justify-between p-4 border-b border-pink-500/10">
-          <h3 className="font-semibold text-white flex items-center gap-2">
-            <Activity className="h-5 w-5 text-pink-400" />
+        <div className="flex items-center justify-between p-4 border-b border-red-500/10">
+          <h3 className="font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+            <Activity className="h-5 w-5 text-red-500" />
             User Statistics
           </h3>
           {expandedSection === "overview" ? (
@@ -125,12 +125,12 @@ export function DeepAnalytics({ adminEmail }: DeepAnalyticsProps) {
 
       {/* Profiles & Content */}
       <div
-        className="rounded-2xl border border-pink-500/20 bg-white/5 overflow-hidden cursor-pointer"
+        className="rounded-2xl border border-red-500/20 bg-white dark:bg-white/5 overflow-hidden cursor-pointer"
         onClick={() => toggleSection("content")}
       >
-        <div className="flex items-center justify-between p-4 border-b border-pink-500/10">
-          <h3 className="font-semibold text-white flex items-center gap-2">
-            <FileText className="h-5 w-5 text-pink-400" />
+        <div className="flex items-center justify-between p-4 border-b border-red-500/10">
+          <h3 className="font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+            <FileText className="h-5 w-5 text-red-500" />
             Content & Profiles
           </h3>
           {expandedSection === "content" ? (
@@ -172,12 +172,12 @@ export function DeepAnalytics({ adminEmail }: DeepAnalyticsProps) {
       {/* Engagement Levels */}
       {engagement && (
         <div
-          className="rounded-2xl border border-pink-500/20 bg-white/5 overflow-hidden cursor-pointer"
+          className="rounded-2xl border border-red-500/20 bg-white dark:bg-white/5 overflow-hidden cursor-pointer"
           onClick={() => toggleSection("engagement")}
         >
-          <div className="flex items-center justify-between p-4 border-b border-pink-500/10">
-            <h3 className="font-semibold text-white flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-pink-400" />
+          <div className="flex items-center justify-between p-4 border-b border-red-500/10">
+            <h3 className="font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-red-500" />
               Engagement Levels
             </h3>
             {expandedSection === "engagement" ? (
@@ -201,14 +201,14 @@ export function DeepAnalytics({ adminEmail }: DeepAnalyticsProps) {
                     {engagement.topEngaged.slice(0, 5).map((profile: { profileId: string; displayName: string; slug: string; engagementScore: number; pageViews: number }) => (
                       <div
                         key={profile.profileId}
-                        className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/10"
+                        className="flex items-center justify-between p-3 rounded-lg bg-red-50 dark:bg-white/5 border border-red-200 dark:border-white/10"
                       >
                         <div>
-                          <p className="font-medium text-white">{profile.displayName}</p>
+                          <p className="font-medium text-slate-900 dark:text-white">{profile.displayName}</p>
                           <p className="text-xs text-slate-400">/{profile.slug}</p>
                         </div>
                         <div className="text-right">
-                          <p className="text-sm font-semibold text-pink-400">{profile.engagementScore} pts</p>
+                          <p className="text-sm font-semibold text-red-600 dark:text-red-400">{profile.engagementScore} pts</p>
                           <p className="text-xs text-slate-400">{profile.pageViews} views</p>
                         </div>
                       </div>
@@ -224,12 +224,12 @@ export function DeepAnalytics({ adminEmail }: DeepAnalyticsProps) {
       {/* Page by Page Analytics */}
       {pageAnalytics && (
         <div
-          className="rounded-2xl border border-pink-500/20 bg-white/5 overflow-hidden cursor-pointer"
+          className="rounded-2xl border border-red-500/20 bg-white dark:bg-white/5 overflow-hidden cursor-pointer"
           onClick={() => toggleSection("pages")}
         >
-          <div className="flex items-center justify-between p-4 border-b border-pink-500/10">
-            <h3 className="font-semibold text-white flex items-center gap-2">
-              <Eye className="h-5 w-5 text-pink-400" />
+          <div className="flex items-center justify-between p-4 border-b border-red-500/10">
+            <h3 className="font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+              <Eye className="h-5 w-5 text-red-500" />
               Page Analytics ({pageAnalytics.period})
             </h3>
             {expandedSection === "pages" ? (
@@ -254,7 +254,7 @@ export function DeepAnalytics({ adminEmail }: DeepAnalyticsProps) {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="text-left text-xs uppercase tracking-wider text-slate-400 border-b border-white/10">
+                    <tr className="text-left text-xs uppercase tracking-wider text-slate-400 border-b border-red-200 dark:border-white/10">
                       <th className="pb-3 pr-4">Profile</th>
                       <th className="pb-3 px-2 text-right">Views</th>
                       <th className="pb-3 px-2 text-right">Visitors</th>
@@ -263,19 +263,19 @@ export function DeepAnalytics({ adminEmail }: DeepAnalyticsProps) {
                       <th className="pb-3 pl-2 text-right">Conv %</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-white/5">
+                  <tbody className="divide-y divide-red-100 dark:divide-white/5">
                     {pageAnalytics.pages.map((page: { profileId: string; displayName: string; ownerEmail?: string; pageViews: number; uniqueVisitors: number; clipPlays: number; emailCaptures: number; conversionRate: number }) => (
-                      <tr key={page.profileId} className="hover:bg-white/5">
+                      <tr key={page.profileId} className="hover:bg-red-50 dark:hover:bg-white/5">
                         <td className="py-3 pr-4">
-                          <p className="font-medium text-white">{page.displayName}</p>
+                          <p className="font-medium text-slate-900 dark:text-white">{page.displayName}</p>
                           <p className="text-xs text-slate-400">{page.ownerEmail}</p>
                         </td>
-                        <td className="py-3 px-2 text-right text-white">{page.pageViews}</td>
-                        <td className="py-3 px-2 text-right text-slate-300">{page.uniqueVisitors}</td>
-                        <td className="py-3 px-2 text-right text-slate-300">{page.clipPlays}</td>
-                        <td className="py-3 px-2 text-right text-slate-300">{page.emailCaptures}</td>
+                        <td className="py-3 px-2 text-right text-slate-900 dark:text-white">{page.pageViews}</td>
+                        <td className="py-3 px-2 text-right text-slate-600 dark:text-slate-300">{page.uniqueVisitors}</td>
+                        <td className="py-3 px-2 text-right text-slate-600 dark:text-slate-300">{page.clipPlays}</td>
+                        <td className="py-3 px-2 text-right text-slate-600 dark:text-slate-300">{page.emailCaptures}</td>
                         <td className="py-3 pl-2 text-right">
-                          <span className={`${page.conversionRate > 5 ? 'text-emerald-400' : page.conversionRate > 0 ? 'text-amber-400' : 'text-slate-500'}`}>
+                          <span className={`${page.conversionRate > 5 ? 'text-emerald-600 dark:text-emerald-400' : page.conversionRate > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-500'}`}>
                             {page.conversionRate}%
                           </span>
                         </td>
@@ -306,17 +306,17 @@ function StatCard({
   variant?: "default" | "warning" | "success";
 }) {
   const colors = {
-    default: "text-pink-400",
-    warning: "text-amber-400",
-    success: "text-emerald-400",
+    default: "text-red-500",
+    warning: "text-amber-500",
+    success: "text-emerald-500",
   };
 
   return (
-    <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+    <div className="rounded-xl border border-red-200 dark:border-white/10 bg-red-50 dark:bg-white/5 p-4">
       <Icon className={`h-6 w-6 ${colors[variant]} mb-2`} />
-      <p className="text-2xl font-bold text-white">{value.toLocaleString()}</p>
-      <p className="text-sm font-medium text-white">{label}</p>
-      <p className="text-xs text-slate-400">{subtext}</p>
+      <p className="text-2xl font-bold text-slate-900 dark:text-white">{value.toLocaleString()}</p>
+      <p className="text-sm font-medium text-slate-700 dark:text-white">{label}</p>
+      <p className="text-xs text-slate-500 dark:text-slate-400">{subtext}</p>
     </div>
   );
 }
@@ -332,17 +332,17 @@ function EngagementBar({ label, count, color }: { label: string; count: number; 
   return (
     <div className="text-center">
       <div className={`h-2 rounded-full ${colorMap[color]} mb-2`} />
-      <p className="text-xl font-bold text-white">{count}</p>
-      <p className="text-xs text-slate-400">{label}</p>
+      <p className="text-xl font-bold text-slate-900 dark:text-white">{count}</p>
+      <p className="text-xs text-slate-500 dark:text-slate-400">{label}</p>
     </div>
   );
 }
 
 function MiniStat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="text-center p-3 rounded-lg bg-white/5 border border-white/10">
-      <p className="text-lg font-bold text-white">{value.toLocaleString()}</p>
-      <p className="text-xs text-slate-400">{label}</p>
+    <div className="text-center p-3 rounded-lg bg-red-50 dark:bg-white/5 border border-red-200 dark:border-white/10">
+      <p className="text-lg font-bold text-slate-900 dark:text-white">{value.toLocaleString()}</p>
+      <p className="text-xs text-slate-500 dark:text-slate-400">{label}</p>
     </div>
   );
 }

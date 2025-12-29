@@ -59,10 +59,11 @@ import { OverviewBento } from "@/components/overview";
 import { BoostModule } from "@/components/boost";
 import { DeepAnalytics } from "@/components/admin/DeepAnalytics";
 import { AdminEmailCampaigns } from "@/components/admin/AdminEmailCampaigns";
+import { AdminCampaignDashboard } from "@/components/campaigns";
 import type { AssetType } from "@/components/overview/types";
 
 // Module types for dynamic content rendering
-type DashboardModule = "overview" | "public-links" | "clips-generator" | "image-manager" | "account-settings" | "email-campaigns" | "social-posting" | "boost" | "admin-analytics" | "admin-emails";
+type DashboardModule = "overview" | "public-links" | "clips-generator" | "image-manager" | "account-settings" | "email-campaigns" | "social-posting" | "boost" | "admin-analytics" | "admin-emails" | "admin-campaigns";
 
 type Submission = {
   id: string;
@@ -394,18 +395,22 @@ export default function UserDashboardPage() {
         <main className="min-h-screen bg-white text-slate-800 dark:bg-flmlnk-dark dark:text-slate-100">
           <div className="relative mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
             <div className="pb-6">
-              <p className="text-xs uppercase tracking-[0.25em] text-pink-600 dark:text-pink-200">Admin Portal</p>
+              <p className="text-xs uppercase tracking-[0.25em] text-red-600 dark:text-red-200">Admin Portal</p>
               <h1 className="text-3xl font-semibold tracking-tight text-slate-900 dark:text-white">
                 Welcome, Admin
               </h1>
             </div>
-            <div className="grid gap-6 lg:grid-cols-2">
+            <div className="grid gap-6 lg:grid-cols-3">
               <div
-                className="cursor-pointer rounded-3xl border border-pink-300 bg-pink-50 p-6 shadow-lg transition hover:border-pink-400 hover:shadow-xl dark:border-pink-900/50 dark:bg-pink-900/20"
+                className={`cursor-pointer rounded-3xl border p-6 shadow-lg transition hover:shadow-xl ${
+                  activeModule === "admin-analytics"
+                    ? "border-red-500 bg-red-100 dark:bg-red-900/30"
+                    : "border-red-300 bg-red-50 hover:border-red-400 dark:border-red-900/50 dark:bg-red-900/20"
+                }`}
                 onClick={() => setActiveModule("admin-analytics")}
               >
                 <div className="flex items-center gap-3 mb-4">
-                  <BarChart3 className="h-8 w-8 text-pink-600 dark:text-pink-400" />
+                  <BarChart3 className="h-8 w-8 text-red-600 dark:text-red-400" />
                   <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Deep Analytics</h2>
                 </div>
                 <p className="text-sm text-slate-600 dark:text-slate-300">
@@ -413,15 +418,35 @@ export default function UserDashboardPage() {
                 </p>
               </div>
               <div
-                className="cursor-pointer rounded-3xl border border-pink-300 bg-pink-50 p-6 shadow-lg transition hover:border-pink-400 hover:shadow-xl dark:border-pink-900/50 dark:bg-pink-900/20"
+                className={`cursor-pointer rounded-3xl border p-6 shadow-lg transition hover:shadow-xl ${
+                  activeModule === "admin-emails"
+                    ? "border-red-500 bg-red-100 dark:bg-red-900/30"
+                    : "border-red-300 bg-red-50 hover:border-red-400 dark:border-red-900/50 dark:bg-red-900/20"
+                }`}
                 onClick={() => setActiveModule("admin-emails")}
               >
                 <div className="flex items-center gap-3 mb-4">
-                  <Users className="h-8 w-8 text-pink-600 dark:text-pink-400" />
+                  <Users className="h-8 w-8 text-red-600 dark:text-red-400" />
                   <h2 className="text-xl font-semibold text-slate-900 dark:text-white">All Filmmakers</h2>
                 </div>
                 <p className="text-sm text-slate-600 dark:text-slate-300">
                   View all registered users and filmmakers for email campaigns.
+                </p>
+              </div>
+              <div
+                className={`cursor-pointer rounded-3xl border p-6 shadow-lg transition hover:shadow-xl ${
+                  activeModule === "admin-campaigns"
+                    ? "border-red-500 bg-red-100 dark:bg-red-900/30"
+                    : "border-red-300 bg-red-50 hover:border-red-400 dark:border-red-900/50 dark:bg-red-900/20"
+                }`}
+                onClick={() => setActiveModule("admin-campaigns")}
+              >
+                <div className="flex items-center gap-3 mb-4">
+                  <Mail className="h-8 w-8 text-red-600 dark:text-red-400" />
+                  <h2 className="text-xl font-semibold text-slate-900 dark:text-white">AI Email Campaigns</h2>
+                </div>
+                <p className="text-sm text-slate-600 dark:text-slate-300">
+                  Create and send AI-powered email campaigns to all users.
                 </p>
               </div>
             </div>
@@ -433,6 +458,9 @@ export default function UserDashboardPage() {
               )}
               {activeModule === "admin-emails" && (
                 <AdminEmailCampaigns adminEmail={userEmail} />
+              )}
+              {activeModule === "admin-campaigns" && (
+                <AdminCampaignDashboard />
               )}
             </div>
           </div>
@@ -764,12 +792,13 @@ export default function UserDashboardPage() {
               {isSuperadmin && (
                 <div className="space-y-2 mt-6">
                   <div className="flex items-center gap-2 px-2">
-                    <Shield className="h-4 w-4 text-pink-400" />
-                    <p className="text-xs uppercase tracking-[0.2em] text-pink-400 font-semibold">Admin</p>
+                    <Shield className="h-4 w-4 text-red-500" />
+                    <p className="text-xs uppercase tracking-[0.2em] text-red-500 font-semibold">Admin</p>
                   </div>
                   {[
                     { label: "Deep Analytics", module: "admin-analytics" as DashboardModule, icon: BarChart3 },
                     { label: "All Filmmakers", module: "admin-emails" as DashboardModule, icon: Users },
+                    { label: "AI Email Campaigns", module: "admin-campaigns" as DashboardModule, icon: Mail },
                   ].map((item) => (
                     <button
                       key={item.label}
@@ -780,8 +809,8 @@ export default function UserDashboardPage() {
                       }}
                       className={`flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-sm font-medium transition ${
                         activeModule === item.module
-                          ? "border-pink-500 bg-pink-100 text-pink-700 dark:bg-pink-600/30 dark:text-white"
-                          : "border-pink-200 bg-pink-50 text-slate-700 hover:border-pink-300 hover:bg-pink-100 dark:border-pink-900/40 dark:bg-pink-900/20 dark:text-white dark:hover:border-pink-700/60 dark:hover:bg-pink-900/30"
+                          ? "border-red-500 bg-red-100 text-red-700 dark:bg-red-600/30 dark:text-white"
+                          : "border-red-200 bg-red-50 text-slate-700 hover:border-red-300 hover:bg-red-100 dark:border-red-900/40 dark:bg-red-900/20 dark:text-white dark:hover:border-red-700/60 dark:hover:bg-red-900/30"
                       }`}
                     >
                       <span className="flex items-center gap-2">
@@ -1425,6 +1454,11 @@ export default function UserDashboardPage() {
             {/* ============ ADMIN: ALL FILMMAKERS EMAIL MODULE ============ */}
             {activeModule === "admin-emails" && isSuperadmin && userEmail && (
               <AdminEmailCampaigns adminEmail={userEmail} />
+            )}
+
+            {/* ============ ADMIN: AI EMAIL CAMPAIGNS MODULE ============ */}
+            {activeModule === "admin-campaigns" && isSuperadmin && (
+              <AdminCampaignDashboard />
             )}
           </section>
         </div>
