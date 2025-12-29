@@ -15,6 +15,7 @@ import {
   ExternalLink,
   Grid as GridIcon,
   Images,
+  Layers,
   LayoutDashboard,
   LayoutList,
   Link as LinkIcon,
@@ -59,11 +60,13 @@ import { OverviewBento } from "@/components/overview";
 import { BoostModule } from "@/components/boost";
 import { DeepAnalytics } from "@/components/admin/DeepAnalytics";
 import { AdminEmailCampaigns } from "@/components/admin/AdminEmailCampaigns";
+import { AdminBoostTracking } from "@/components/admin/AdminBoostTracking";
+import { AdminAssetManager } from "@/components/admin/AdminAssetManager";
 import { AdminCampaignDashboard } from "@/components/campaigns";
 import type { AssetType } from "@/components/overview/types";
 
 // Module types for dynamic content rendering
-type DashboardModule = "overview" | "public-links" | "clips-generator" | "image-manager" | "account-settings" | "email-campaigns" | "social-posting" | "boost" | "admin-analytics" | "admin-emails" | "admin-campaigns";
+type DashboardModule = "overview" | "public-links" | "clips-generator" | "image-manager" | "account-settings" | "email-campaigns" | "social-posting" | "boost" | "admin-analytics" | "admin-emails" | "admin-campaigns" | "admin-boosts" | "admin-assets";
 
 type Submission = {
   id: string;
@@ -400,7 +403,7 @@ export default function UserDashboardPage() {
                 Welcome, Admin
               </h1>
             </div>
-            <div className="grid gap-6 lg:grid-cols-3">
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
               <div
                 className={`cursor-pointer rounded-3xl border p-6 shadow-lg transition hover:shadow-xl ${
                   activeModule === "admin-analytics"
@@ -449,6 +452,38 @@ export default function UserDashboardPage() {
                   Create and send AI-powered email campaigns to all users.
                 </p>
               </div>
+              <div
+                className={`cursor-pointer rounded-3xl border p-6 shadow-lg transition hover:shadow-xl ${
+                  activeModule === "admin-boosts"
+                    ? "border-red-500 bg-red-100 dark:bg-red-900/30"
+                    : "border-red-300 bg-red-50 hover:border-red-400 dark:border-red-900/50 dark:bg-red-900/20"
+                }`}
+                onClick={() => setActiveModule("admin-boosts")}
+              >
+                <div className="flex items-center gap-3 mb-4">
+                  <Zap className="h-8 w-8 text-red-600 dark:text-red-400" />
+                  <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Boost Tracking</h2>
+                </div>
+                <p className="text-sm text-slate-600 dark:text-slate-300">
+                  Track all user boost submissions and campaign performance.
+                </p>
+              </div>
+              <div
+                className={`cursor-pointer rounded-3xl border p-6 shadow-lg transition hover:shadow-xl ${
+                  activeModule === "admin-assets"
+                    ? "border-red-500 bg-red-100 dark:bg-red-900/30"
+                    : "border-red-300 bg-red-50 hover:border-red-400 dark:border-red-900/50 dark:bg-red-900/20"
+                }`}
+                onClick={() => setActiveModule("admin-assets")}
+              >
+                <div className="flex items-center gap-3 mb-4">
+                  <Layers className="h-8 w-8 text-red-600 dark:text-red-400" />
+                  <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Asset Manager</h2>
+                </div>
+                <p className="text-sm text-slate-600 dark:text-slate-300">
+                  View all generated clips, memes, and GIFs across all users.
+                </p>
+              </div>
             </div>
 
             {/* Render admin modules when selected */}
@@ -461,6 +496,12 @@ export default function UserDashboardPage() {
               )}
               {activeModule === "admin-campaigns" && (
                 <AdminCampaignDashboard />
+              )}
+              {activeModule === "admin-boosts" && (
+                <AdminBoostTracking adminEmail={userEmail} />
+              )}
+              {activeModule === "admin-assets" && (
+                <AdminAssetManager adminEmail={userEmail} />
               )}
             </div>
           </div>
@@ -799,6 +840,8 @@ export default function UserDashboardPage() {
                     { label: "Deep Analytics", module: "admin-analytics" as DashboardModule, icon: BarChart3 },
                     { label: "All Filmmakers", module: "admin-emails" as DashboardModule, icon: Users },
                     { label: "AI Email Campaigns", module: "admin-campaigns" as DashboardModule, icon: Mail },
+                    { label: "Boost Tracking", module: "admin-boosts" as DashboardModule, icon: Zap },
+                    { label: "Asset Manager", module: "admin-assets" as DashboardModule, icon: Layers },
                   ].map((item) => (
                     <button
                       key={item.label}
@@ -1459,6 +1502,16 @@ export default function UserDashboardPage() {
             {/* ============ ADMIN: AI EMAIL CAMPAIGNS MODULE ============ */}
             {activeModule === "admin-campaigns" && isSuperadmin && (
               <AdminCampaignDashboard />
+            )}
+
+            {/* ============ ADMIN: BOOST TRACKING MODULE ============ */}
+            {activeModule === "admin-boosts" && isSuperadmin && userEmail && (
+              <AdminBoostTracking adminEmail={userEmail} />
+            )}
+
+            {/* ============ ADMIN: ASSET MANAGER MODULE ============ */}
+            {activeModule === "admin-assets" && isSuperadmin && userEmail && (
+              <AdminAssetManager adminEmail={userEmail} />
             )}
           </section>
         </div>

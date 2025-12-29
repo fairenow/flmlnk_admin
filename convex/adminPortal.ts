@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { query } from "./_generated/server";
+import { Id } from "./_generated/dataModel";
 
 // =============================================================================
 // ADMIN PORTAL QUERIES
@@ -446,6 +447,422 @@ export const getUserEngagementLevels = query({
       levelCounts,
       topEngaged: profileEngagement.slice(0, 10),
       allProfiles: profileEngagement,
+    };
+  },
+});
+
+// =============================================================================
+// BOOST TRACKING - View all user boost submissions
+// =============================================================================
+
+/**
+ * Get all boost campaigns across all users for admin tracking
+ */
+export const getAllBoostCampaigns = query({
+  args: {
+    adminEmail: v.string(),
+    status: v.optional(v.string()),
+    sortBy: v.optional(v.union(v.literal("recent"), v.literal("budget"), v.literal("impressions"))),
+    limit: v.optional(v.number()),
+  },
+  async handler(ctx, args) {
+    await validateSuperadminByEmail(ctx, args.adminEmail);
+
+    const limit = args.limit ?? 100;
+    let campaigns = await ctx.db.query("boost_campaigns").order("desc").collect();
+
+    // Apply status filter
+    if (args.status) {
+      campaigns = campaigns.filter((c) => c.status === args.status);
+    }
+
+    // Sort
+    if (args.sortBy === "budget") {
+      campaigns.sort((a, b) => b.budgetCents - a.budgetCents);
+    } else if (args.sortBy === "impressions") {
+      campaigns.sort((a, b) => (b.impressions ?? 0) - (a.impressions ?? 0));
+    }
+
+    // Limit
+    campaigns = campaigns.slice(0, limit);
+
+    // R2 bucket URL for thumbnails
+    const r2Bucket = process.env.R2_PUBLIC_BUCKET_URL;
+
+    // Enrich with user and asset details
+    const enrichedCampaigns = await Promise.all(
+      campaigns.map(async (campaign) => {
+        const creator = await ctx.db.get(campaign.createdByUserId);
+        const profile = campaign.actorProfileId
+          ? await ctx.db.get(campaign.actorProfileId)
+          : null;
+
+        let assetThumbnail: string | null = null;
+        let assetTitle = campaign.name;
+
+        // Get asset thumbnail
+        if (campaign.assetId && campaign.assetType) {
+          if (campaign.assetType === "clip") {
+            const clip = await ctx.db.get(campaign.assetId as Id<"generated_clips">);
+            if (clip) {
+              assetThumbnail = clip.customThumbnailUrl || clip.thumbnailUrl || null;
+              assetTitle = clip.title || campaign.name;
+            }
+          } else if (campaign.assetType === "meme") {
+            const meme = await ctx.db.get(campaign.assetId as Id<"generated_memes">);
+            if (meme) {
+              if (meme.memeStorageId) {
+                assetThumbnail = await ctx.storage.getUrl(meme.memeStorageId);
+              } else if (r2Bucket && meme.r2MemeKey) {
+                assetThumbnail = `${r2Bucket}/${meme.r2MemeKey}`;
+              }
+              assetTitle = meme.caption?.slice(0, 50) || campaign.name;
+            }
+          } else if (campaign.assetType === "gif") {
+            const gif = await ctx.db.get(campaign.assetId as Id<"generated_gifs">);
+            if (gif) {
+              if (gif.storageId) {
+                assetThumbnail = await ctx.storage.getUrl(gif.storageId);
+              } else if (r2Bucket && gif.r2GifKey) {
+                assetThumbnail = `${r2Bucket}/${gif.r2GifKey}`;
+              }
+              assetTitle = gif.title || campaign.name;
+            }
+          }
+        }
+
+        const now = Date.now();
+        const daysRemaining = campaign.endDate
+          ? Math.max(0, Math.ceil((campaign.endDate - now) / (24 * 60 * 60 * 1000)))
+          : null;
+
+        return {
+          _id: campaign._id,
+          name: assetTitle,
+          assetType: campaign.assetType || null,
+          assetThumbnail,
+          status: campaign.status,
+          paymentStatus: campaign.paymentStatus,
+          budgetCents: campaign.budgetCents,
+          dailyBudgetCents: campaign.dailyBudgetCents,
+          durationDays: campaign.durationDays,
+          platform: campaign.platform,
+          // Creator info
+          creatorName: creator?.name || creator?.email,
+          creatorEmail: creator?.email,
+          creatorId: campaign.createdByUserId,
+          // Profile info
+          profileName: profile?.displayName,
+          profileSlug: profile?.slug,
+          profileId: campaign.actorProfileId,
+          // Metrics
+          impressions: campaign.impressions ?? 0,
+          clicks: campaign.clicks ?? 0,
+          reach: campaign.reach ?? 0,
+          spentCents: campaign.spentCents ?? 0,
+          conversions: campaign.conversions ?? 0,
+          ctr: campaign.ctr,
+          cpc: campaign.cpc,
+          cpm: campaign.cpm,
+          // Dates
+          createdAt: campaign.createdAt,
+          startDate: campaign.startDate,
+          endDate: campaign.endDate,
+          paidAt: campaign.paidAt,
+          daysRemaining,
+        };
+      })
+    );
+
+    return enrichedCampaigns;
+  },
+});
+
+/**
+ * Get boost analytics summary
+ */
+export const getBoostAnalytics = query({
+  args: {
+    adminEmail: v.string(),
+  },
+  async handler(ctx, args) {
+    await validateSuperadminByEmail(ctx, args.adminEmail);
+
+    const campaigns = await ctx.db.query("boost_campaigns").collect();
+
+    const now = Date.now();
+    const today = now - 24 * 60 * 60 * 1000;
+    const thisWeek = now - 7 * 24 * 60 * 60 * 1000;
+    const thisMonth = now - 30 * 24 * 60 * 60 * 1000;
+
+    const activeCampaigns = campaigns.filter((c) => c.status === "active");
+    const pendingCampaigns = campaigns.filter((c) => c.status === "pending");
+    const paidCampaigns = campaigns.filter((c) => c.paymentStatus === "paid");
+
+    const totalRevenue = paidCampaigns.reduce((sum, c) => sum + c.budgetCents, 0);
+    const totalSpent = campaigns.reduce((sum, c) => sum + (c.spentCents ?? 0), 0);
+    const totalImpressions = campaigns.reduce((sum, c) => sum + (c.impressions ?? 0), 0);
+    const totalClicks = campaigns.reduce((sum, c) => sum + (c.clicks ?? 0), 0);
+
+    const campaignsToday = campaigns.filter((c) => c.createdAt >= today).length;
+    const campaignsThisWeek = campaigns.filter((c) => c.createdAt >= thisWeek).length;
+    const campaignsThisMonth = campaigns.filter((c) => c.createdAt >= thisMonth).length;
+
+    const revenueToday = paidCampaigns
+      .filter((c) => (c.paidAt ?? c.createdAt) >= today)
+      .reduce((sum, c) => sum + c.budgetCents, 0);
+    const revenueThisWeek = paidCampaigns
+      .filter((c) => (c.paidAt ?? c.createdAt) >= thisWeek)
+      .reduce((sum, c) => sum + c.budgetCents, 0);
+    const revenueThisMonth = paidCampaigns
+      .filter((c) => (c.paidAt ?? c.createdAt) >= thisMonth)
+      .reduce((sum, c) => sum + c.budgetCents, 0);
+
+    // By asset type
+    const byAssetType = {
+      clip: campaigns.filter((c) => c.assetType === "clip").length,
+      meme: campaigns.filter((c) => c.assetType === "meme").length,
+      gif: campaigns.filter((c) => c.assetType === "gif").length,
+    };
+
+    return {
+      totalCampaigns: campaigns.length,
+      activeCampaigns: activeCampaigns.length,
+      pendingCampaigns: pendingCampaigns.length,
+      paidCampaigns: paidCampaigns.length,
+      totalRevenueCents: totalRevenue,
+      totalSpentCents: totalSpent,
+      totalImpressions,
+      totalClicks,
+      avgCTR: totalImpressions > 0
+        ? Math.round((totalClicks / totalImpressions) * 10000) / 100
+        : 0,
+      byAssetType,
+      timeStats: {
+        campaignsToday,
+        campaignsThisWeek,
+        campaignsThisMonth,
+        revenueToday,
+        revenueThisWeek,
+        revenueThisMonth,
+      },
+    };
+  },
+});
+
+// =============================================================================
+// ASSET MANAGEMENT - View all generated assets across users
+// =============================================================================
+
+/**
+ * Get all generated clips across all users
+ */
+export const getAllGeneratedClips = query({
+  args: {
+    adminEmail: v.string(),
+    limit: v.optional(v.number()),
+  },
+  async handler(ctx, args) {
+    await validateSuperadminByEmail(ctx, args.adminEmail);
+
+    const limit = args.limit ?? 100;
+    const clips = await ctx.db.query("generated_clips").order("desc").take(limit);
+
+    const enrichedClips = await Promise.all(
+      clips.map(async (clip) => {
+        const profile = await ctx.db.get(clip.actorProfileId);
+        const user = profile ? await ctx.db.get(profile.userId) : null;
+
+        return {
+          _id: clip._id,
+          title: clip.title,
+          status: clip.status,
+          thumbnailUrl: clip.customThumbnailUrl || clip.thumbnailUrl,
+          videoUrl: clip.videoUrl,
+          duration: clip.duration,
+          createdAt: clip._creationTime,
+          // Profile info
+          profileName: profile?.displayName,
+          profileSlug: profile?.slug,
+          // User info
+          userName: user?.name || user?.email,
+          userEmail: user?.email,
+        };
+      })
+    );
+
+    return enrichedClips;
+  },
+});
+
+/**
+ * Get all generated memes across all users
+ */
+export const getAllGeneratedMemes = query({
+  args: {
+    adminEmail: v.string(),
+    limit: v.optional(v.number()),
+  },
+  async handler(ctx, args) {
+    await validateSuperadminByEmail(ctx, args.adminEmail);
+
+    const limit = args.limit ?? 100;
+    const memes = await ctx.db.query("generated_memes").order("desc").take(limit);
+    const r2Bucket = process.env.R2_PUBLIC_BUCKET_URL;
+
+    const enrichedMemes = await Promise.all(
+      memes.map(async (meme) => {
+        const profile = await ctx.db.get(meme.actorProfileId);
+        const user = profile ? await ctx.db.get(profile.userId) : null;
+
+        let imageUrl: string | null = null;
+        if (meme.memeStorageId) {
+          imageUrl = await ctx.storage.getUrl(meme.memeStorageId);
+        } else if (r2Bucket && meme.r2MemeKey) {
+          imageUrl = `${r2Bucket}/${meme.r2MemeKey}`;
+        }
+
+        return {
+          _id: meme._id,
+          caption: meme.caption,
+          imageUrl,
+          templateId: meme.templateId,
+          templateName: meme.templateName,
+          createdAt: meme._creationTime,
+          // Profile info
+          profileName: profile?.displayName,
+          profileSlug: profile?.slug,
+          // User info
+          userName: user?.name || user?.email,
+          userEmail: user?.email,
+        };
+      })
+    );
+
+    return enrichedMemes;
+  },
+});
+
+/**
+ * Get all generated GIFs across all users
+ */
+export const getAllGeneratedGifs = query({
+  args: {
+    adminEmail: v.string(),
+    limit: v.optional(v.number()),
+  },
+  async handler(ctx, args) {
+    await validateSuperadminByEmail(ctx, args.adminEmail);
+
+    const limit = args.limit ?? 100;
+    const gifs = await ctx.db.query("generated_gifs").order("desc").take(limit);
+    const r2Bucket = process.env.R2_PUBLIC_BUCKET_URL;
+
+    const enrichedGifs = await Promise.all(
+      gifs.map(async (gif) => {
+        const profile = await ctx.db.get(gif.actorProfileId);
+        const user = profile ? await ctx.db.get(profile.userId) : null;
+
+        let gifUrl: string | null = null;
+        if (gif.storageId) {
+          gifUrl = await ctx.storage.getUrl(gif.storageId);
+        } else if (r2Bucket && gif.r2GifKey) {
+          gifUrl = `${r2Bucket}/${gif.r2GifKey}`;
+        }
+
+        return {
+          _id: gif._id,
+          title: gif.title,
+          gifUrl,
+          duration: gif.duration,
+          createdAt: gif._creationTime,
+          // Profile info
+          profileName: profile?.displayName,
+          profileSlug: profile?.slug,
+          // User info
+          userName: user?.name || user?.email,
+          userEmail: user?.email,
+        };
+      })
+    );
+
+    return enrichedGifs;
+  },
+});
+
+/**
+ * Get asset counts summary across all users
+ */
+export const getAssetsSummary = query({
+  args: {
+    adminEmail: v.string(),
+  },
+  async handler(ctx, args) {
+    await validateSuperadminByEmail(ctx, args.adminEmail);
+
+    const now = Date.now();
+    const today = now - 24 * 60 * 60 * 1000;
+    const thisWeek = now - 7 * 24 * 60 * 60 * 1000;
+    const thisMonth = now - 30 * 24 * 60 * 60 * 1000;
+
+    const [clips, memes, gifs, trailerJobs] = await Promise.all([
+      ctx.db.query("generated_clips").collect(),
+      ctx.db.query("generated_memes").collect(),
+      ctx.db.query("generated_gifs").collect(),
+      ctx.db.query("trailer_jobs").collect(),
+    ]);
+
+    // Count by time period
+    const clipsToday = clips.filter((c) => c._creationTime >= today).length;
+    const clipsThisWeek = clips.filter((c) => c._creationTime >= thisWeek).length;
+    const clipsThisMonth = clips.filter((c) => c._creationTime >= thisMonth).length;
+
+    const memesToday = memes.filter((m) => m._creationTime >= today).length;
+    const memesThisWeek = memes.filter((m) => m._creationTime >= thisWeek).length;
+    const memesThisMonth = memes.filter((m) => m._creationTime >= thisMonth).length;
+
+    const gifsToday = gifs.filter((g) => g._creationTime >= today).length;
+    const gifsThisWeek = gifs.filter((g) => g._creationTime >= thisWeek).length;
+    const gifsThisMonth = gifs.filter((g) => g._creationTime >= thisMonth).length;
+
+    // Unique profiles that have generated assets
+    const profilesWithClips = new Set(clips.map((c) => c.actorProfileId.toString())).size;
+    const profilesWithMemes = new Set(memes.map((m) => m.actorProfileId.toString())).size;
+    const profilesWithGifs = new Set(gifs.map((g) => g.actorProfileId.toString())).size;
+
+    // Trailer jobs status
+    const pendingTrailers = trailerJobs.filter((t) => t.status === "pending").length;
+    const processingTrailers = trailerJobs.filter((t) => t.status === "processing").length;
+    const completedTrailers = trailerJobs.filter((t) => t.status === "completed").length;
+
+    return {
+      clips: {
+        total: clips.length,
+        today: clipsToday,
+        thisWeek: clipsThisWeek,
+        thisMonth: clipsThisMonth,
+        profilesUsing: profilesWithClips,
+      },
+      memes: {
+        total: memes.length,
+        today: memesToday,
+        thisWeek: memesThisWeek,
+        thisMonth: memesThisMonth,
+        profilesUsing: profilesWithMemes,
+      },
+      gifs: {
+        total: gifs.length,
+        today: gifsToday,
+        thisWeek: gifsThisWeek,
+        thisMonth: gifsThisMonth,
+        profilesUsing: profilesWithGifs,
+      },
+      trailers: {
+        total: trailerJobs.length,
+        pending: pendingTrailers,
+        processing: processingTrailers,
+        completed: completedTrailers,
+      },
     };
   },
 });
