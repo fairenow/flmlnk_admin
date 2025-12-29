@@ -5,15 +5,14 @@ import { useRouter } from "next/navigation";
 import { Loader2, Shield } from "lucide-react";
 
 /**
- * Admin dashboard landing page.
- * Redirects to the admin section since this portal is for superadmins only.
+ * Dashboard landing page - redirects to the admin's profile dashboard.
  */
 export default function DashboardPage() {
   const router = useRouter();
 
   useEffect(() => {
-    // Redirect to admin section for superadmins
-    router.replace("/admin/analytics");
+    // Redirect to the superadmin's dashboard
+    router.replace("/dashboard/flmlnk");
   }, [router]);
 
   return (
@@ -23,7 +22,7 @@ export default function DashboardPage() {
           <Shield className="w-8 h-8 text-admin-primary-400" />
           <Loader2 className="h-6 w-6 animate-spin text-admin-primary-400" />
         </div>
-        <p className="text-sm text-slate-400">Loading admin dashboard...</p>
+        <p className="text-sm text-slate-400">Loading dashboard...</p>
       </div>
     </main>
   );
