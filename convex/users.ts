@@ -72,6 +72,26 @@ export const getCurrent = query({
   },
 });
 
+/**
+ * Check if a user is a superadmin by their email.
+ * Used by admin portal when auth context is not available.
+ */
+export const checkSuperadminByEmail = query({
+  args: { email: v.string() },
+  async handler(ctx, args) {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_email", (q) => q.eq("email", args.email))
+      .unique();
+
+    if (!user) {
+      return { found: false, superadmin: false };
+    }
+
+    return { found: true, superadmin: user.superadmin === true };
+  },
+});
+
 export const updateCurrent = mutation({
   args: {
     email: v.string(),

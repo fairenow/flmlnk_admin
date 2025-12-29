@@ -15,8 +15,8 @@ interface AdminAuthGuardProps {
  * AdminAuthGuard protects routes that require superadmin access.
  *
  * It checks:
- * 1. If the user is authenticated (has a valid session)
- * 2. If the user has superadmin privileges
+ * 1. If the user is authenticated (has a valid session from flmlnk.com)
+ * 2. If the user has superadmin privileges (checked by email)
  *
  * Redirects to:
  * - /signin if not authenticated
@@ -26,11 +26,12 @@ export function AdminAuthGuard({ children }: AdminAuthGuardProps) {
   const router = useRouter();
   const { data: sessionData, isPending: sessionLoading } = useSession();
   const isAuthenticated = Boolean(sessionData?.session);
+  const userEmail = sessionData?.user?.email;
 
-  // Only fetch user when authenticated
-  const user = useQuery(
-    api.users.getCurrent,
-    isAuthenticated ? {} : "skip"
+  // Check superadmin status by email (works without Convex auth context)
+  const superadminCheck = useQuery(
+    api.users.checkSuperadminByEmail,
+    userEmail ? { email: userEmail } : "skip"
   );
 
   const [isChecking, setIsChecking] = useState(true);
@@ -45,27 +46,33 @@ export function AdminAuthGuard({ children }: AdminAuthGuardProps) {
       return;
     }
 
-    // Authenticated - wait for user data to load
-    if (user === undefined) return;
-
-    // User data loaded but no user found in database
-    if (user === null) {
+    // Authenticated but no email in session
+    if (!userEmail) {
       router.replace("/signin");
       return;
     }
 
+    // Wait for superadmin check to complete
+    if (superadminCheck === undefined) return;
+
+    // User not found in database
+    if (!superadminCheck.found) {
+      router.replace("/access-denied");
+      return;
+    }
+
     // Check superadmin status
-    if (!user.superadmin) {
+    if (!superadminCheck.superadmin) {
       router.replace("/access-denied");
       return;
     }
 
     // All checks passed - allow access
     setIsChecking(false);
-  }, [sessionLoading, isAuthenticated, user, router]);
+  }, [sessionLoading, isAuthenticated, userEmail, superadminCheck, router]);
 
   // Show loading state while checking auth
-  if (isChecking || sessionLoading || (isAuthenticated && user === undefined)) {
+  if (isChecking || sessionLoading || (isAuthenticated && superadminCheck === undefined)) {
     return (
       <div className="min-h-screen bg-admin-dark flex items-center justify-center">
         <div className="text-center">
