@@ -1,40 +1,20 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
-import { useConvex } from "convex/react";
-import { api } from "@convex/_generated/api";
-import { signIn, useSession } from "@/lib/auth-client";
+import { useSearchParams } from "next/navigation";
+import { useMemo, useState } from "react";
+import { signIn } from "@/lib/auth-client";
 import { Shield, Loader2 } from "lucide-react";
 
 export function SignInContent() {
-  const router = useRouter();
   const searchParams = useSearchParams();
-  const convex = useConvex();
-  const { data: sessionData } = useSession();
-  const isAuthenticated = Boolean(sessionData?.session);
   const [isPending, setIsPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const next = useMemo(() => searchParams?.get("next") ?? null, [searchParams]);
 
-  useEffect(() => {
-    if (!isAuthenticated) return;
-
-    const redirectAfterSignIn = async () => {
-      const status = await convex.query(api.filmmakers.getOnboardingStatus, {});
-
-      if (next) {
-        router.push(next);
-      } else if (status.hasProfile && status.slug) {
-        router.push("/dashboard");
-      } else {
-        router.push("/dashboard");
-      }
-    };
-
-    void redirectAfterSignIn();
-  }, [convex, isAuthenticated, next, router]);
+  // Note: We don't auto-redirect on isAuthenticated here to avoid redirect loops.
+  // The OAuth callback will redirect to /dashboard after successful sign-in.
+  // AdminAuthGuard on /dashboard will verify superadmin status.
 
   const handleGoogleSignIn = async () => {
     setError(null);
