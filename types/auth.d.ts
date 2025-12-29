@@ -10,7 +10,7 @@ declare module "@convex-dev/better-auth/server" {
 }
 
 declare module "@convex-dev/better-auth/react" {
-  export const ConvexProviderWithAuth: any;
+  export const ConvexBetterAuthProvider: any;
   export const Authenticated: any;
   export const Unauthenticated: any;
   export const AuthLoading: any;
